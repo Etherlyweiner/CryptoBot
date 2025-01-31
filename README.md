@@ -1,18 +1,21 @@
 # CryptoBot
 
-A cryptocurrency trading bot that uses technical analysis to make trading decisions on Binance.
+A cryptocurrency trading bot that uses technical analysis and machine learning to make trading decisions on Binance.
 
 ## Features
 
-- Supports multiple trading pairs
-- Technical analysis using RSI, MACD, and Bollinger Bands
+- Real-time market analysis
+- Technical indicators (RSI, MACD, Bollinger Bands)
+- Machine learning-based predictions
+- Risk management system
+- Telegram notifications
+- Web-based dashboard
 - Automated trading execution
 - Configurable trading parameters
-- Scheduled trading strategy execution
 
 ## Setup
 
-1. Create a virtual environment (already done):
+1. Create a virtual environment:
 ```bash
 python -m venv venv
 ```
@@ -26,30 +29,31 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-4. Configure your API keys:
-- Rename `.env` file
-- Add your Binance API key and secret
+4. Configure your API keys in `.env`:
+```
+BINANCE_API_KEY=your_api_key
+BINANCE_API_SECRET=your_api_secret
+TELEGRAM_BOT_TOKEN=your_telegram_token
+TELEGRAM_CHAT_ID=your_chat_id
+```
 
-5. Adjust trading parameters in `config.py`:
-- Trading pairs
-- Timeframe
-- Trading quantity
-- Stop loss and take profit percentages
+5. Adjust trading parameters in `config.py`
 
 ## Usage
 
-Run the bot:
+1. Start the bot and dashboard:
 ```bash
-python bot.py
+streamlit run app.py
 ```
+
+2. Or use the provided shortcut:
+- Double-click `start_cryptobot.bat`
 
 ## Files
 
-- `bot.py`: Main trading bot implementation
+- `app.py`: Streamlit dashboard
+- `bot.py`: Trading bot implementation
 - `config.py`: Configuration settings
+- `ml_strategy.py`: Machine learning strategy
+- `risk_monitor.py`: Risk management system
 - `requirements.txt`: Project dependencies
-- `.env`: API credentials (keep this secure!)
-
-## Warning
-
-This is a basic trading bot for educational purposes. Always test with small amounts first and understand the risks of automated trading.
