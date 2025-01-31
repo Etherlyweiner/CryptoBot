@@ -19,16 +19,22 @@ st.set_page_config(
 )
 
 # Initialize session state with defaults
-if 'bot' not in st.session_state:
-    st.session_state.bot = CryptoBot()
-if 'risk_monitor' not in st.session_state:
-    st.session_state.risk_monitor = RiskMonitor()
-if 'last_data_update' not in st.session_state:
-    st.session_state.last_data_update = datetime.now() - timedelta(minutes=5)
-if 'cached_ohlcv_data' not in st.session_state:
-    st.session_state.cached_ohlcv_data = None
-if 'positions_cache' not in st.session_state:
-    st.session_state.positions_cache = {}
+async def init_session_state():
+    if 'bot' not in st.session_state:
+        st.session_state.bot = CryptoBot()
+    if 'risk_monitor' not in st.session_state:
+        st.session_state.risk_monitor = await RiskMonitor().__aenter__()
+    if 'last_data_update' not in st.session_state:
+        st.session_state.last_data_update = datetime.now() - timedelta(minutes=5)
+    if 'cached_ohlcv_data' not in st.session_state:
+        st.session_state.cached_ohlcv_data = None
+    if 'positions_cache' not in st.session_state:
+        st.session_state.positions_cache = {}
+
+# Cleanup session state
+async def cleanup_session_state():
+    if 'risk_monitor' in st.session_state:
+        await st.session_state.risk_monitor.__aexit__(None, None, None)
 
 # Cache decorator for expensive operations
 def cache_data(ttl_seconds=300):
@@ -52,6 +58,9 @@ def cache_data(ttl_seconds=300):
     return decorator
 
 def main():
+    # Initialize session state
+    asyncio.run(init_session_state())
+
     # Sidebar
     with st.sidebar:
         st.title("🤖 CryptoBot Controls")
@@ -137,6 +146,9 @@ def main():
 
     except Exception as e:
         st.error(f"Error updating dashboard: {str(e)}")
+
+    # Cleanup session state
+    asyncio.run(cleanup_session_state())
 
 @cache_data(ttl_seconds=300)
 def calculate_daily_pnl():

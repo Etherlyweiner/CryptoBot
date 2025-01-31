@@ -8,7 +8,8 @@ load_dotenv()
 API_KEY = os.getenv('BINANCE_API_KEY')
 API_SECRET = os.getenv('BINANCE_API_SECRET')
 PHANTOM_WALLET = os.getenv('PHANTOM_WALLET_ADDRESS')
-TELEGRAM_BOT_TOKEN = "7862793413:AAEOthxs6uSmce3-lx-lQOqBeV5cnYjL74c"
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 # Trading Parameters
 TRADING_PAIRS = ['SOL/USDT']
@@ -23,6 +24,11 @@ RISK_SCORE_THRESHOLD = 0.7  # Minimum risk score to execute trade
 VOLUME_SPIKE_THRESHOLD = 3.0  # Volume increase factor to detect pumps
 LIQUIDITY_THRESHOLD = 50000  # Minimum liquidity in USD
 MAX_PRICE_IMPACT = 0.02  # Maximum allowable price impact
+PRICE_CHANGE_THRESHOLD = 0.05  # 5% price change threshold
+LIQUIDITY_CHANGE_THRESHOLD = 0.10  # 10% liquidity change threshold
+VOLUME_THRESHOLD = 100000  # $100k volume threshold
+MONITORING_INTERVAL = 60  # Monitor every 60 seconds
+TELEGRAM_ALERTS_ENABLED = True  # Enable Telegram alerts
 
 # Machine Learning Parameters
 MODEL_UPDATE_INTERVAL = 6  # Hours between model updates
@@ -38,7 +44,6 @@ PUMP_DETECTION_SOURCES = [
 ]
 
 # Notification Settings
-TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 NOTIFICATION_COOLDOWN = 300  # seconds between notifications
 
 # UI Settings

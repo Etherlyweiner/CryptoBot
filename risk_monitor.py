@@ -1,5 +1,4 @@
 import requests
-from bs4 import BeautifulSoup
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -10,133 +9,172 @@ import json
 import telegram
 import logging
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 class RiskMonitor:
     def __init__(self):
         self.last_notification = {}
         self.bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
-        self.session = requests.Session()
+        self.session = aiohttp.ClientSession()
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
-        
+    
+    async def __aenter__(self):
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.session.close()
+    
     async def check_dex_screener(self, token_address):
         """Check DEX Screener for token information using API"""
         try:
             url = f"https://api.dexscreener.com/latest/dex/tokens/{token_address}"
-            response = self.session.get(url, headers=self.headers)
-            response.raise_for_status()
-            data = response.json()
-            
-            if 'pairs' in data and len(data['pairs']) > 0:
-                pair = data['pairs'][0]  # Get the most liquid pair
-                return {
-                    "price": float(pair.get('priceUsd', 0)),
-                    "volume_24h": float(pair.get('volume24h', 0)),
-                    "liquidity": float(pair.get('liquidity', 0))
-                }
-            return None
-            
+            async with self.session.get(url, headers=self.headers) as response:
+                response.raise_for_status()
+                data = await response.json()
+                
+                if 'pairs' in data and len(data['pairs']) > 0:
+                    pair = data['pairs'][0]  # Get the most liquid pair
+                    return {
+                        "price": float(pair.get('priceUsd', 0)),
+                        "volume_24h": float(pair.get('volume24h', 0)),
+                        "liquidity": float(pair.get('liquidity', 0))
+                    }
+                return None
+                
         except Exception as e:
-            logging.error(f"Error checking DEX Screener: {str(e)}")
+            logger.error(f"Error checking DEX Screener: {str(e)}")
             return None
 
     async def check_pump_signals(self):
         """Check various sources for pump signals using API endpoints"""
         signals = []
         try:
-            # Example: Check CoinGecko trending
+            # Check CoinGecko trending
             url = "https://api.coingecko.com/api/v3/search/trending"
-            response = self.session.get(url, headers=self.headers)
-            response.raise_for_status()
-            data = response.json()
-            
-            for coin in data.get('coins', []):
-                signals.append({
-                    'symbol': coin['item']['symbol'],
-                    'score': coin['item']['score']
-                })
+            async with self.session.get(url, headers=self.headers) as response:
+                response.raise_for_status()
+                data = await response.json()
                 
+                if 'coins' in data:
+                    for coin in data['coins'][:5]:  # Top 5 trending
+                        signals.append({
+                            'source': 'CoinGecko Trending',
+                            'symbol': coin['item']['symbol'].upper(),
+                            'name': coin['item']['name'],
+                            'score': coin['item'].get('score', 0)
+                        })
+            
+            # Add more API-based signal sources here
+            
         except Exception as e:
-            logging.error(f"Error checking pump signals: {str(e)}")
+            logger.error(f"Error checking pump signals: {str(e)}")
+        
         return signals
 
-    async def send_notification(self, message):
-        """Send notification via Telegram"""
+    def calculate_risk_score(self, metrics, signals):
+        """Calculate a risk score based on various metrics"""
         try:
-            current_time = datetime.now()
-            if (message not in self.last_notification or 
-                (current_time - self.last_notification[message]).total_seconds() > NOTIFICATION_COOLDOWN):
+            # Base score starts at 0.5
+            score = 0.5
+            
+            # Adjust based on liquidity
+            if metrics.get('liquidity', 0) > LIQUIDITY_THRESHOLD:
+                score += 0.1
+            
+            # Adjust based on volume
+            if metrics.get('volume_24h', 0) > VOLUME_SPIKE_THRESHOLD:
+                score += 0.1
+            
+            # Adjust based on price stability
+            if metrics.get('price_change_24h', 0) < 0.2:  # Less than 20% change
+                score += 0.1
+            
+            # Adjust based on signals
+            if len(signals) > 0:
+                score += 0.1 * min(len(signals), 3)  # Max bonus of 0.3 from signals
+            
+            return min(score, 1.0)  # Cap at 1.0
+            
+        except Exception as e:
+            logger.error(f"Error calculating risk score: {str(e)}")
+            return 0.0
+
+    async def check_token_metrics(self, token_address):
+        """Get comprehensive token metrics from various APIs"""
+        metrics = {}
+        
+        # Get DEX Screener data
+        dex_data = await self.check_dex_screener(token_address)
+        if dex_data:
+            metrics.update(dex_data)
+            
+        # Add more API endpoints for additional metrics
+        
+        return metrics
+
+    async def monitor_token(self, token_address):
+        """Monitor a token's metrics and send alerts if necessary"""
+        try:
+            metrics = await self.check_token_metrics(token_address)
+            
+            if not metrics:
+                return
+            
+            # Check for significant changes
+            alerts = []
+            
+            # Price change alert
+            if token_address in self.last_notification:
+                last_price = self.last_notification[token_address].get('price', 0)
+                if last_price > 0:
+                    price_change = ((metrics['price'] - last_price) / last_price) * 100
+                    if abs(price_change) >= PRICE_CHANGE_THRESHOLD:
+                        alerts.append(f"Price {'increased' if price_change > 0 else 'decreased'} by {abs(price_change):.2f}%")
+            
+            # Volume spike alert
+            if metrics['volume_24h'] > VOLUME_THRESHOLD:
+                alerts.append(f"High 24h volume: ${metrics['volume_24h']:,.2f}")
+            
+            # Liquidity change alert
+            if token_address in self.last_notification:
+                last_liquidity = self.last_notification[token_address].get('liquidity', 0)
+                if last_liquidity > 0:
+                    liq_change = ((metrics['liquidity'] - last_liquidity) / last_liquidity) * 100
+                    if abs(liq_change) >= LIQUIDITY_CHANGE_THRESHOLD:
+                        alerts.append(f"Liquidity {'increased' if liq_change > 0 else 'decreased'} by {abs(liq_change):.2f}%")
+            
+            # Send alerts if any
+            if alerts and TELEGRAM_ALERTS_ENABLED:
+                message = f"🚨 Alert for {token_address}:\n" + "\n".join(f"• {alert}" for alert in alerts)
                 await self.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
-                self.last_notification[message] = current_time
+            
+            # Update last notification data
+            self.last_notification[token_address] = metrics
+            
         except Exception as e:
-            logging.error(f"Error sending notification: {str(e)}")
+            logger.error(f"Error monitoring token {token_address}: {str(e)}")
 
-    async def analyze_risk(self, token_data):
-        """Analyze risk based on various factors"""
-        try:
-            if not token_data:
-                return 1.0  # Maximum risk if no data available
+    async def run(self, token_addresses):
+        """Main monitoring loop"""
+        while True:
+            try:
+                for address in token_addresses:
+                    await self.monitor_token(address)
                 
-            risk_score = 0.0
-            
-            # Volume analysis
-            if token_data['volume_24h'] > 0:
-                volume_ratio = token_data['volume_24h'] / token_data['liquidity']
-                if volume_ratio > VOLUME_SPIKE_THRESHOLD:
-                    risk_score += 0.3
-                    await self.send_notification(f"⚠️ High volume detected! Volume/Liquidity ratio: {volume_ratio:.2f}")
-            
-            # Liquidity check
-            if token_data['liquidity'] < LIQUIDITY_THRESHOLD:
-                risk_score += 0.3
-                await self.send_notification(f"⚠️ Low liquidity warning! Current liquidity: ${token_data['liquidity']:,.2f}")
-            
-            # Price impact
-            price_impact = 1000 / token_data['liquidity']  # Simplified calculation
-            if price_impact > MAX_PRICE_IMPACT:
-                risk_score += 0.4
-                await self.send_notification(f"⚠️ High price impact warning! Estimated impact: {price_impact:.2%}")
-            
-            return risk_score
-        except Exception as e:
-            logging.error(f"Error analyzing risk: {str(e)}")
-            return 1.0  # Return maximum risk score on error
-
-    async def monitor_new_launches(self):
-        """Monitor for new token launches"""
-        try:
-            # Monitor DEX Screener for new listings
-            url = "https://api.dexscreener.com/latest/dex/tokens/new"
-            response = self.session.get(url, headers=self.headers)
-            response.raise_for_status()
-            data = response.json()
-            
-            for token in data.get('tokens', []):
-                token_data = {
-                    "address": token.get('id'),
-                    "name": token.get('name'),
-                    "time": token.get('time')
-                }
+                # Check for pump signals
+                signals = await self.check_pump_signals()
+                if signals and TELEGRAM_ALERTS_ENABLED:
+                    message = "🔥 Trending Tokens:\n" + "\n".join(
+                        f"• {signal['name']} ({signal['symbol']}) - {signal['source']}"
+                        for signal in signals
+                    )
+                    await self.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
                 
-                # Get detailed token data
-                details = await self.check_dex_screener(token_data["address"])
-                if details:
-                    token_data.update(details)
-                    
-                    # Analyze risk
-                    risk_score = await self.analyze_risk(token_data)
-                    
-                    if risk_score >= RISK_SCORE_THRESHOLD:
-                        notification = (
-                            f"🚀 *New Token Launch Alert*\n"
-                            f"Name: {token_data['name']}\n"
-                            f"Address: `{token_data['address']}`\n"
-                            f"Price: ${token_data['price']:.6f}\n"
-                            f"Liquidity: ${token_data['liquidity']:,.2f}\n"
-                            f"Risk Score: {risk_score:.2f}\n"
-                            f"Time: {token_data['time']}"
-                        )
-                        await self.send_notification(notification)
-                        
-        except Exception as e:
-            logging.error(f"Error monitoring new launches: {str(e)}")
+            except Exception as e:
+                logger.error(f"Error in monitoring loop: {str(e)}")
+            
+            await asyncio.sleep(MONITORING_INTERVAL)
