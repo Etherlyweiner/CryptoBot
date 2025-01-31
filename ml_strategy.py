@@ -1,16 +1,10 @@
 import numpy as np
-from sklearn.preprocessing import StandardScaler
-from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import LSTM, Dense, Dropout
-from tensorflow.keras.optimizers import Adam
 import pandas as pd
-from pytube import YouTube
-from youtube_transcript_api import YouTubeTranscriptApi
-from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
-import os
-import json
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, LSTM
+import tensorflow as tf
 import logging
-import torch
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -18,154 +12,113 @@ logger = logging.getLogger(__name__)
 
 class MLStrategy:
     def __init__(self):
-        self.model = self._create_model()
-        self.scaler = StandardScaler()
-        self.strategy_cache_file = "learned_strategies.json"
-        self.learned_strategies = self._load_strategies()
+        self.model = None
+        self.scaler = MinMaxScaler(feature_range=(0, 1))
+        self.setup_model()
         
-        # Initialize sentiment analysis with better error handling
+    def setup_model(self):
+        """Initialize the LSTM model"""
         try:
-            # Check if CUDA is available and set the device accordingly
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            
-            # Use a specific model for sentiment analysis
-            model_name = "distilbert-base-uncased-finetuned-sst-2-english"
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-            self.sentiment_model = AutoModelForSequenceClassification.from_pretrained(model_name)
-            self.sentiment_model.to(self.device)
-            
-            # Initialize the pipeline with the specific model and tokenizer
-            self.sentiment_analyzer = pipeline(
-                "sentiment-analysis",
-                model=self.sentiment_model,
-                tokenizer=self.tokenizer,
-                device=self.device if self.device == "cuda" else -1
-            )
-            logger.info("Sentiment analysis model loaded successfully")
-        except Exception as e:
-            logger.error(f"Error loading sentiment analysis model: {str(e)}")
-            self.sentiment_analyzer = None
-
-    def _create_model(self):
-        try:
-            model = Sequential([
-                LSTM(50, return_sequences=True, input_shape=(30, 6)),
-                Dropout(0.2),
-                LSTM(50, return_sequences=False),
-                Dropout(0.2),
-                Dense(25),
-                Dense(1, activation='sigmoid')
+            # Simple LSTM model
+            self.model = Sequential([
+                LSTM(50, activation='relu', input_shape=(60, 5), return_sequences=True),
+                LSTM(50, activation='relu'),
+                Dense(1)
             ])
-            model.compile(optimizer=Adam(learning_rate=0.001),
-                         loss='binary_crossentropy',
-                         metrics=['accuracy'])
-            return model
+            
+            self.model.compile(optimizer='adam', loss='mse')
+            logger.info("ML model initialized successfully")
         except Exception as e:
-            logger.error(f"Error creating model: {str(e)}")
-            return None
-
-    def _load_strategies(self):
-        try:
-            if os.path.exists(self.strategy_cache_file):
-                with open(self.strategy_cache_file, 'r') as f:
-                    return json.load(f)
-            return []
-        except Exception as e:
-            logger.error(f"Error loading strategies: {str(e)}")
-            return []
-
-    def _save_strategies(self):
-        try:
-            with open(self.strategy_cache_file, 'w') as f:
-                json.dump(self.learned_strategies, f)
-        except Exception as e:
-            logger.error(f"Error saving strategies: {str(e)}")
+            logger.error(f"Error setting up ML model: {str(e)}")
+            self.model = None
 
     def prepare_data(self, df):
+        """Prepare data for ML model"""
         try:
-            features = ['close', 'volume', 'RSI', 'MACD', 'BB_upper', 'BB_lower']
-            X = df[features].values
-            X = self.scaler.fit_transform(X)
-            X = np.array([X[i-30:i] for i in range(30, len(X))])
-            y = np.where(df['close'].pct_change(periods=1).shift(-1).iloc[29:-1] > 0, 1, 0)
-            return X, y
+            # Use basic features
+            features = ['open', 'high', 'low', 'close', 'volume']
+            
+            # Ensure all required columns exist
+            for feature in features:
+                if feature not in df.columns:
+                    raise ValueError(f"Missing required column: {feature}")
+            
+            # Scale the features
+            scaled_data = self.scaler.fit_transform(df[features])
+            
+            # Create sequences
+            X, y = [], []
+            for i in range(60, len(scaled_data)):
+                X.append(scaled_data[i-60:i])
+                y.append(scaled_data[i, 3])  # Predict close price
+            
+            return np.array(X), np.array(y)
         except Exception as e:
             logger.error(f"Error preparing data: {str(e)}")
             return None, None
 
-    def analyze_sentiment(self, text):
+    def train(self, df):
+        """Train the model on historical data"""
         try:
-            if self.sentiment_analyzer is None:
-                return {"label": "NEUTRAL", "score": 0.5}
-            result = self.sentiment_analyzer(text)[0]
-            return result
-        except Exception as e:
-            logger.error(f"Error analyzing sentiment: {str(e)}")
-            return {"label": "NEUTRAL", "score": 0.5}
-
-    async def train(self, df):
-        try:
+            if self.model is None:
+                self.setup_model()
+                
             X, y = self.prepare_data(df)
-            if X is not None and y is not None and self.model is not None:
-                self.model.fit(X, y, epochs=10, batch_size=32, verbose=0)
-                return True
-            return False
+            if X is None or y is None:
+                return False
+                
+            # Train the model
+            self.model.fit(X, y, epochs=50, batch_size=32, verbose=0)
+            logger.info("Model training completed successfully")
+            return True
         except Exception as e:
             logger.error(f"Error training model: {str(e)}")
             return False
 
-    def get_trading_signals(self, df):
+    def predict(self, df):
+        """Make predictions using the trained model"""
         try:
             if self.model is None:
+                logger.warning("Model not initialized")
                 return None
                 
             X, _ = self.prepare_data(df)
             if X is None:
                 return None
                 
-            predictions = self.model.predict(X[-1:], verbose=0)
-            signal = 'buy' if predictions[0][0] > 0.5 else 'sell'
-            return signal
+            # Make prediction
+            prediction = self.model.predict(X[-1:], verbose=0)
+            
+            # Inverse transform to get actual price
+            dummy_array = np.zeros((1, 5))
+            dummy_array[0, 3] = prediction[0, 0]
+            actual_prediction = self.scaler.inverse_transform(dummy_array)[0, 3]
+            
+            return actual_prediction
         except Exception as e:
-            logger.error(f"Error getting trading signals: {str(e)}")
+            logger.error(f"Error making prediction: {str(e)}")
             return None
 
-    async def learn_from_youtube(self, query="crypto trading strategy"):
-        """Learn new trading strategies from YouTube videos"""
+    def get_signal(self, df):
+        """Generate trading signal based on ML prediction"""
         try:
-            # Search for relevant videos
-            videos = YouTube.search(query, limit=5)
+            current_price = df['close'].iloc[-1]
+            predicted_price = self.predict(df)
             
-            for video in videos:
-                video_id = video.video_id
+            if predicted_price is None:
+                return 0
                 
-                # Get video transcript
-                try:
-                    transcript = YouTubeTranscriptApi.get_transcript(video_id)
-                    text = " ".join([t['text'] for t in transcript])
-                    
-                    # Analyze sentiment and content
-                    sentiment = self.analyze_sentiment(text[:512])
-                    
-                    # Only learn from positive/neutral content
-                    if sentiment['label'] == 'POSITIVE' or (
-                        sentiment['label'] == 'NEUTRAL' and sentiment['score'] > 0.6
-                    ):
-                        strategy = {
-                            'video_id': video_id,
-                            'title': video.title,
-                            'sentiment': sentiment,
-                            'transcript_summary': text[:1000]
-                        }
-                        
-                        # Store unique strategies
-                        if strategy not in self.learned_strategies:
-                            self.learned_strategies.append(strategy)
-                            self._save_strategies()
-                            
-                except Exception as e:
-                    logger.error(f"Error processing video {video_id}: {str(e)}")
-                    continue
-                    
+            # Calculate percentage change
+            price_change = ((predicted_price - current_price) / current_price) * 100
+            
+            # Generate signal based on predicted price movement
+            if price_change > 1.0:  # Predicted 1% or more increase
+                return 1  # Buy signal
+            elif price_change < -1.0:  # Predicted 1% or more decrease
+                return -1  # Sell signal
+            else:
+                return 0  # Hold
+                
         except Exception as e:
-            logger.error(f"Error learning from YouTube: {str(e)}")
+            logger.error(f"Error generating signal: {str(e)}")
+            return 0  # Return neutral signal on error
