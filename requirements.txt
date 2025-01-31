@@ -12,11 +12,9 @@ transformers==4.37.2
 youtube-transcript-api==0.6.2
 streamlit==1.31.0
 plotly==5.19.0
-selenium==4.17.2
 beautifulsoup4==4.12.3
 python-telegram-bot==20.8
 aiohttp==3.11.1
 torch==2.1.0
 httpx==0.26.0
 requests==2.31.0
-webdriver-manager==4.0.1
