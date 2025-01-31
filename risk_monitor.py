@@ -10,9 +10,11 @@ import json
 import telegram
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+import platform
 
 class RiskMonitor:
     def __init__(self):
@@ -22,24 +24,48 @@ class RiskMonitor:
         
     def setup_browser(self):
         """Setup headless browser for web scraping"""
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        self.browser = webdriver.Chrome(options=chrome_options)
+        try:
+            chrome_options = Options()
+            chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
+            
+            # Add these options for Linux environments (like Streamlit Cloud)
+            if platform.system() == "Linux":
+                chrome_options.add_argument("--disable-software-rasterizer")
+                chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+                chrome_options.binary_location = "/usr/bin/google-chrome"
+            
+            self.browser = webdriver.Chrome(options=chrome_options)
+        except Exception as e:
+            print(f"Browser setup failed: {str(e)}")
+            self.browser = None
+
+    def __del__(self):
+        """Cleanup browser resources"""
+        try:
+            if hasattr(self, 'browser') and self.browser:
+                self.browser.quit()
+        except:
+            pass
 
     async def check_dex_screener(self, token_address):
-        """Monitor DEX Screener for token information"""
+        """Check DEX Screener for token information"""
+        if not self.browser:
+            return None
+            
         try:
             url = f"{DEX_SCREENER_URL}/solana/{token_address}"
             self.browser.get(url)
             
-            # Wait for price element to load
-            price_element = WebDriverWait(self.browser, 10).until(
+            # Wait for price element
+            wait = WebDriverWait(self.browser, 10)
+            price_element = wait.until(
                 EC.presence_of_element_located((By.CLASS_NAME, "price"))
             )
             
-            # Extract relevant data
+            # Extract data
             price = float(price_element.text.strip().replace("$", ""))
             liquidity = float(self.browser.find_element(By.CLASS_NAME, "liquidity").text.replace("$", "").replace(",", ""))
             holders = int(self.browser.find_element(By.CLASS_NAME, "holders").text.replace(",", ""))
@@ -180,8 +206,3 @@ class RiskMonitor:
                         
         except Exception as e:
             print(f"Error monitoring new launches: {str(e)}")
-
-    def __del__(self):
-        """Cleanup browser instance"""
-        if hasattr(self, 'browser'):
-            self.browser.quit()
