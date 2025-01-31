@@ -23,7 +23,9 @@ async def init_session_state():
     if 'bot' not in st.session_state:
         st.session_state.bot = CryptoBot()
     if 'risk_monitor' not in st.session_state:
-        st.session_state.risk_monitor = await RiskMonitor().__aenter__()
+        risk_monitor = RiskMonitor()
+        await risk_monitor.start()
+        st.session_state.risk_monitor = risk_monitor
     if 'last_data_update' not in st.session_state:
         st.session_state.last_data_update = datetime.now() - timedelta(minutes=5)
     if 'cached_ohlcv_data' not in st.session_state:
@@ -34,7 +36,7 @@ async def init_session_state():
 # Cleanup session state
 async def cleanup_session_state():
     if 'risk_monitor' in st.session_state:
-        await st.session_state.risk_monitor.__aexit__(None, None, None)
+        await st.session_state.risk_monitor.stop()
 
 # Cache decorator for expensive operations
 def cache_data(ttl_seconds=300):
@@ -59,96 +61,101 @@ def cache_data(ttl_seconds=300):
 
 def main():
     # Initialize session state
-    asyncio.run(init_session_state())
-
-    # Sidebar
-    with st.sidebar:
-        st.title("🤖 CryptoBot Controls")
-        
-        # Wallet Connection
-        st.subheader("Wallet Connection")
-        wallet_address = st.text_input("Phantom Wallet Address", 
-                                     value=PHANTOM_WALLET if PHANTOM_WALLET else "",
-                                     key="wallet_input")
-        if st.button("Connect Wallet", key="connect_button"):
-            try:
-                # Add wallet connection logic here
-                st.success("Wallet connected successfully!")
-            except Exception as e:
-                st.error(f"Failed to connect wallet: {str(e)}")
-
-        # Risk Management Settings
-        st.subheader("Risk Management")
-        try:
-            new_stop_loss = st.slider("Stop Loss %", 0.1, 5.0, 
-                                    float(STOP_LOSS_PERCENTAGE * 100), 0.1) / 100
-            new_take_profit = st.slider("Take Profit %", 1.0, 10.0, 
-                                      float(TAKE_PROFIT_PERCENTAGE * 100), 0.1) / 100
-            new_max_trades = st.number_input("Max Trades per Day", 1, 50, 
-                                           MAX_TRADES_PER_DAY)
-            new_position_size = st.number_input("Position Size (USD)", 1.0, 100.0, 
-                                              TARGET_POSITION_SIZE, 0.5)
-
-            # Apply Settings Button
-            if st.button("Apply Settings", key="apply_settings"):
-                update_config(
-                    stop_loss=new_stop_loss,
-                    take_profit=new_take_profit,
-                    max_trades=new_max_trades,
-                    position_size=new_position_size
-                )
-                st.success("Settings updated successfully!")
-        except Exception as e:
-            st.error(f"Error loading settings: {str(e)}")
-
-    # Main content
-    st.title("📊 CryptoBot Dashboard")
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(init_session_state())
 
     try:
-        # Top metrics row
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            active_trades = len(st.session_state.bot.positions) if hasattr(st.session_state.bot, 'positions') else 0
-            st.metric("Active Trades", active_trades)
-        with col2:
-            daily_trades = st.session_state.bot.daily_trades if hasattr(st.session_state.bot, 'daily_trades') else 0
-            st.metric("Daily Trades", daily_trades)
-        with col3:
-            daily_pnl = calculate_daily_pnl()
-            st.metric("Daily P&L", f"${daily_pnl:,.2f}")
-        with col4:
+        # Sidebar
+        with st.sidebar:
+            st.title("🤖 CryptoBot Controls")
+            
+            # Wallet Connection
+            st.subheader("Wallet Connection")
+            wallet_address = st.text_input("Phantom Wallet Address", 
+                                         value=PHANTOM_WALLET if PHANTOM_WALLET else "",
+                                         key="wallet_input")
+            if st.button("Connect Wallet", key="connect_button"):
+                try:
+                    # Add wallet connection logic here
+                    st.success("Wallet connected successfully!")
+                except Exception as e:
+                    st.error(f"Failed to connect wallet: {str(e)}")
+
+            # Risk Management Settings
+            st.subheader("Risk Management")
             try:
-                risk_score = st.session_state.risk_monitor.calculate_risk_score(
-                    {"liquidity": 100000, "holders": 500, "volume_24h": 50000, "volume_24h_prev": 40000},
-                    []
-                )
-                st.metric("Risk Score", f"{risk_score:.2f}")
-            except Exception:
-                st.metric("Risk Score", "N/A")
+                new_stop_loss = st.slider("Stop Loss %", 0.1, 5.0, 
+                                        float(STOP_LOSS_PERCENTAGE * 100), 0.1) / 100
+                new_take_profit = st.slider("Take Profit %", 1.0, 10.0, 
+                                          float(TAKE_PROFIT_PERCENTAGE * 100), 0.1) / 100
+                new_max_trades = st.number_input("Max Trades per Day", 1, 50, 
+                                               MAX_TRADES_PER_DAY)
+                new_position_size = st.number_input("Position Size (USD)", 1.0, 100.0, 
+                                                  TARGET_POSITION_SIZE, 0.5)
 
-        # Charts and Analysis
-        tab1, tab2, tab3 = st.tabs(["Trading View", "Risk Analysis", "New Launches"])
+                # Apply Settings Button
+                if st.button("Apply Settings", key="apply_settings"):
+                    update_config(
+                        stop_loss=new_stop_loss,
+                        take_profit=new_take_profit,
+                        max_trades=new_max_trades,
+                        position_size=new_position_size
+                    )
+                    st.success("Settings updated successfully!")
+            except Exception as e:
+                st.error(f"Error loading settings: {str(e)}")
 
-        with tab1:
-            st.subheader("Price Chart")
-            display_trading_chart()
-            st.subheader("Active Positions")
-            display_positions()
+        # Main content
+        st.title("📊 CryptoBot Dashboard")
 
-        with tab2:
-            st.subheader("Risk Monitoring")
-            display_risk_analysis()
+        try:
+            # Top metrics row
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                active_trades = len(st.session_state.bot.positions) if hasattr(st.session_state.bot, 'positions') else 0
+                st.metric("Active Trades", active_trades)
+            with col2:
+                daily_trades = st.session_state.bot.daily_trades if hasattr(st.session_state.bot, 'daily_trades') else 0
+                st.metric("Daily Trades", daily_trades)
+            with col3:
+                daily_pnl = calculate_daily_pnl()
+                st.metric("Daily P&L", f"${daily_pnl:,.2f}")
+            with col4:
+                try:
+                    risk_score = st.session_state.risk_monitor.calculate_risk_score(
+                        {"liquidity": 100000, "holders": 500, "volume_24h": 50000, "volume_24h_prev": 40000},
+                        []
+                    )
+                    st.metric("Risk Score", f"{risk_score:.2f}")
+                except Exception:
+                    st.metric("Risk Score", "N/A")
 
-        with tab3:
-            st.subheader("Latest Token Launches")
-            display_new_launches()
+            # Charts and Analysis
+            tab1, tab2, tab3 = st.tabs(["Trading View", "Risk Analysis", "New Launches"])
 
-    except Exception as e:
-        st.error(f"Error updating dashboard: {str(e)}")
+            with tab1:
+                st.subheader("Price Chart")
+                display_trading_chart()
+                st.subheader("Active Positions")
+                display_positions()
 
-    # Cleanup session state
-    asyncio.run(cleanup_session_state())
+            with tab2:
+                st.subheader("Risk Monitoring")
+                display_risk_analysis()
+
+            with tab3:
+                st.subheader("Latest Token Launches")
+                display_new_launches()
+
+        except Exception as e:
+            st.error(f"Error updating dashboard: {str(e)}")
+
+    finally:
+        # Cleanup
+        loop.run_until_complete(cleanup_session_state())
+        loop.close()
 
 @cache_data(ttl_seconds=300)
 def calculate_daily_pnl():

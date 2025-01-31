@@ -17,20 +17,29 @@ class RiskMonitor:
     def __init__(self):
         self.last_notification = {}
         self.bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
-        self.session = aiohttp.ClientSession()
+        self.session = None
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
     
-    async def __aenter__(self):
+    async def start(self):
+        """Initialize the aiohttp session"""
+        if self.session is None:
+            self.session = aiohttp.ClientSession()
         return self
     
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.session.close()
+    async def stop(self):
+        """Close the aiohttp session"""
+        if self.session:
+            await self.session.close()
+            self.session = None
     
     async def check_dex_screener(self, token_address):
         """Check DEX Screener for token information using API"""
         try:
+            if not self.session:
+                await self.start()
+                
             url = f"https://api.dexscreener.com/latest/dex/tokens/{token_address}"
             async with self.session.get(url, headers=self.headers) as response:
                 response.raise_for_status()
@@ -53,6 +62,9 @@ class RiskMonitor:
         """Check various sources for pump signals using API endpoints"""
         signals = []
         try:
+            if not self.session:
+                await self.start()
+                
             # Check CoinGecko trending
             url = "https://api.coingecko.com/api/v3/search/trending"
             async with self.session.get(url, headers=self.headers) as response:
@@ -67,8 +79,6 @@ class RiskMonitor:
                             'name': coin['item']['name'],
                             'score': coin['item'].get('score', 0)
                         })
-            
-            # Add more API-based signal sources here
             
         except Exception as e:
             logger.error(f"Error checking pump signals: {str(e)}")
@@ -112,8 +122,6 @@ class RiskMonitor:
         if dex_data:
             metrics.update(dex_data)
             
-        # Add more API endpoints for additional metrics
-        
         return metrics
 
     async def monitor_token(self, token_address):
@@ -160,21 +168,27 @@ class RiskMonitor:
 
     async def run(self, token_addresses):
         """Main monitoring loop"""
-        while True:
-            try:
-                for address in token_addresses:
-                    await self.monitor_token(address)
-                
-                # Check for pump signals
-                signals = await self.check_pump_signals()
-                if signals and TELEGRAM_ALERTS_ENABLED:
-                    message = "🔥 Trending Tokens:\n" + "\n".join(
-                        f"• {signal['name']} ({signal['symbol']}) - {signal['source']}"
-                        for signal in signals
-                    )
-                    await self.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
-                
-            except Exception as e:
-                logger.error(f"Error in monitoring loop: {str(e)}")
+        try:
+            await self.start()
             
-            await asyncio.sleep(MONITORING_INTERVAL)
+            while True:
+                try:
+                    for address in token_addresses:
+                        await self.monitor_token(address)
+                    
+                    # Check for pump signals
+                    signals = await self.check_pump_signals()
+                    if signals and TELEGRAM_ALERTS_ENABLED:
+                        message = "🔥 Trending Tokens:\n" + "\n".join(
+                            f"• {signal['name']} ({signal['symbol']}) - {signal['source']}"
+                            for signal in signals
+                        )
+                        await self.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
+                    
+                except Exception as e:
+                    logger.error(f"Error in monitoring loop: {str(e)}")
+                
+                await asyncio.sleep(MONITORING_INTERVAL)
+                
+        finally:
+            await self.stop()
