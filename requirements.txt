@@ -16,3 +16,6 @@ selenium==4.17.2
 beautifulsoup4==4.12.3
 python-telegram-bot==20.8
 aiohttp==3.11.1
+torch==2.6.0
+httpx==0.26.0
+requests==2.32.3
