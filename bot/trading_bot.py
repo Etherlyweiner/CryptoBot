@@ -102,8 +102,21 @@ class TradingBot:
         """Start the trading bot."""
         if not self.is_running:
             self.is_running = True
-            self._trading_task = asyncio.create_task(self._trading_loop())
-            logger.info("Trading bot started")
+            try:
+                # Get or create event loop
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                
+                # Create and run the trading task
+                self._trading_task = loop.create_task(self._trading_loop())
+                logger.info("Trading bot started")
+            except Exception as e:
+                self.is_running = False
+                logger.error(f"Failed to start trading bot: {str(e)}")
+                raise RuntimeError(f"Failed to start trading bot: {str(e)}")
     
     def stop(self):
         """Stop the trading bot."""

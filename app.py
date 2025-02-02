@@ -296,69 +296,88 @@ def initialize_bot():
         return False, error_msg
 
 def main():
-    """Main dashboard function"""
-    render_header()
-    
-    # Initialize bot if not already done
-    if 'bot' not in st.session_state:
-        success, message = initialize_bot()
-        if not success:
-            st.error(message)
-            st.stop()
-    
-    # Wallet connection status
-    wallet = st.session_state.bot.wallet
-    if wallet.is_connected():
-        wallet_address = str(wallet.pubkey)
-        st.sidebar.success(f"Connected to wallet: {wallet_address}")
+    """Main dashboard function."""
+    try:
+        # Initialize bot if not already done
+        if 'bot' not in st.session_state:
+            success, message = initialize_bot()
+            if not success:
+                st.error(message)
+                st.stop()
         
-        # Add Solscan link
-        explorer_url = wallet.get_explorer_url()
-        st.sidebar.markdown(f"[View on Solscan]({explorer_url})")
-    else:
-        st.sidebar.warning("Wallet not connected")
-    
-    # Wallet connection button
-    if not wallet.is_connected():
-        if st.button("Connect Phantom Wallet"):
-            with st.spinner("Connecting to Phantom wallet..."):
-                try:
-                    success, message = wallet.connect()
-                    if success:
-                        wallet_address = str(wallet.pubkey)
-                        st.sidebar.success(f"Connected to wallet: {wallet_address}")
-                        st.experimental_rerun()
-                    else:
-                        st.error(f"Failed to connect: {message}")
-                except Exception as e:
-                    logger.error(f"Wallet connection error: {str(e)}")
-                    logger.error(traceback.format_exc())
-                    st.error(f"Connection error: {str(e)}")
-    
-    # Main dashboard sections
-    if wallet.is_connected():
-        render_wallet_info()
-        render_trading_settings()
-        render_active_trades()
-        render_trade_history()
-        render_trading_stats()
+        # Wallet connection status
+        wallet = st.session_state.bot.wallet
+        if wallet.is_connected():
+            wallet_address = str(wallet.pubkey)
+            st.sidebar.success(f"Connected to wallet: {wallet_address}")
+            
+            # Add Solscan link
+            explorer_url = wallet.get_explorer_url()
+            st.sidebar.markdown(f"[View on Solscan]({explorer_url})")
+        else:
+            st.sidebar.warning("Wallet not connected")
         
-        # Start/Stop bot
-        col1, col2 = st.columns(2)
+        # Wallet connection button
+        if not wallet.is_connected():
+            if st.button("Connect Phantom Wallet"):
+                with st.spinner("Connecting to Phantom wallet..."):
+                    try:
+                        success, message = wallet.connect()
+                        if success:
+                            wallet_address = str(wallet.pubkey)
+                            st.sidebar.success(f"Connected to wallet: {wallet_address}")
+                            st.experimental_rerun()
+                        else:
+                            st.error(f"Failed to connect: {message}")
+                    except Exception as e:
+                        logger.error(f"Wallet connection error: {str(e)}")
+                        logger.error(traceback.format_exc())
+                        st.error(f"Connection error: {str(e)}")
         
-        with col1:
-            if st.button("Start Trading Bot"):
-                st.session_state.bot_running = True
-                st.success("Trading bot started!")
-                st.session_state.bot.start()
-        
-        with col2:
-            if st.button("Stop Trading Bot"):
-                st.session_state.bot_running = False
-                st.session_state.bot.stop()
-                st.info("Trading bot stopped")
-    else:
-        st.warning("Please connect your Phantom wallet to access the trading dashboard.")
+        # Main dashboard sections
+        if wallet.is_connected():
+            render_wallet_info()
+            render_trading_settings()
+            render_active_trades()
+            render_trade_history()
+            render_trading_stats()
+            
+            # Start/Stop bot
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("Start Trading Bot"):
+                    try:
+                        st.session_state.bot.start()
+                        st.session_state.bot_running = True
+                        st.success("Trading bot started!")
+                    except Exception as e:
+                        logger.error(f"Failed to start bot: {str(e)}")
+                        st.error(f"Failed to start bot: {str(e)}")
+            
+            with col2:
+                if st.button("Stop Trading Bot"):
+                    try:
+                        st.session_state.bot.stop()
+                        st.session_state.bot_running = False
+                        st.info("Trading bot stopped")
+                    except Exception as e:
+                        logger.error(f"Failed to stop bot: {str(e)}")
+                        st.error(f"Failed to stop bot: {str(e)}")
+                        
+            # Show bot status
+            if hasattr(st.session_state, 'bot_running') and st.session_state.bot_running:
+                st.sidebar.success("Bot Status: Running")
+            else:
+                st.sidebar.warning("Bot Status: Stopped")
+                
+        else:
+            st.warning("Please connect your Phantom wallet to access the trading dashboard.")
+            
+    except Exception as e:
+        logger.error(f"Dashboard error: {str(e)}")
+        logger.error(traceback.format_exc())
+        st.error(f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
     main()
