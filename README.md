@@ -77,6 +77,61 @@ python bot.py
 streamlit run monitoring_dashboard.py
 ```
 
+## Solana Trading Setup
+
+### Prerequisites
+1. Install [Phantom Wallet](https://phantom.app/) browser extension
+2. Create a Solana wallet and fund it with SOL
+3. Ensure you have Python 3.8+ installed
+
+### Solana Configuration
+1. Get a Solana RPC URL (you can use public endpoints or get a dedicated one from [QuickNode](https://www.quicknode.com/))
+2. Configure your `.env` file with:
+```bash
+# Solana Configuration
+SOLANA_RPC_URL=your_rpc_url_here
+NETWORK=mainnet  # or devnet for testing
+
+# Trading Parameters
+POSITION_SIZE=0.1  # SOL per trade
+MAX_POSITIONS=1
+STOP_LOSS_PCT=0.05
+TAKE_PROFIT_PCT=0.2
+MAX_SLIPPAGE_BPS=100
+MIN_LIQUIDITY=1000
+```
+
+### Running Solana Bot
+1. Start the Solana trading bot:
+```bash
+python test_solana_trade.py
+```
+
+2. When prompted:
+   - Connect your Phantom Wallet
+   - Approve the connection
+   - Review and approve transactions
+
+### Supported Features
+- Memecoin trading on Solana
+- Integration with Jupiter DEX for best prices
+- Real-time price monitoring
+- Technical analysis
+- Social sentiment analysis
+- Risk management
+- Performance tracking
+
+### Safety Features
+- Slippage protection
+- Liquidity validation
+- Transaction simulation
+- Error handling
+- Automatic stop-loss
+- Position size limits
+
+## Warning
+This bot is for personal use only. Trading cryptocurrencies involves significant risk. Only trade with funds you can afford to lose.
+
 ## Configuration
 
 The bot can be configured through:
@@ -113,14 +168,6 @@ The monitoring dashboard provides:
 5. Alert monitoring
 
 Access the dashboard at `http://localhost:8501` after starting with Streamlit.
-
-## Safety Features
-
-1. Configuration validation
-2. System resource monitoring
-3. Database backup and recovery
-4. Error handling and logging
-5. Trade execution verification
 
 ## Contributing
 
