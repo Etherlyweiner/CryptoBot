@@ -1,103 +1,139 @@
-# CryptoBot
+# CryptoBot - Conservative Trading Bot
 
-A Solana-based cryptocurrency trading bot that integrates with Phantom wallet for automated trading on Jupiter DEX.
+A sophisticated cryptocurrency trading bot focused on conservative trading strategies with robust risk management.
 
 ## Features
 
-- Phantom wallet integration
-- Solana token trading via Jupiter DEX
-- Real-time market monitoring
-- Technical analysis:
-  - RSI
-  - MACD
-  - EMA crossovers
-- Risk management:
-  - Position sizing
-  - Stop-loss
-  - Take-profit
-  - Maximum drawdown protection
-- Web-based dashboard
-- Trade history tracking
-- Performance analytics
-- Structured logging
+### Conservative Trading Strategy
+- Dynamic position sizing based on market conditions
+- Advanced risk management with multiple safety checks
+- Support/resistance level detection
+- Volume profile analysis
+- Market volatility monitoring
 
-## Prerequisites
+### Risk Management
+- Maximum drawdown protection
+- Position size limits
+- Total exposure control
+- Win rate monitoring
+- Correlation analysis
+- Daily trade limits
 
-- Python 3.8 or higher
-- Phantom wallet browser extension
-- Solana account with SOL for transaction fees
+### Real-time Monitoring
+- Performance dashboard
+- Risk metrics visualization
+- Trading activity tracking
+- Historical analysis tools
+- Alert system
 
-## Setup
+### Data Storage
+- SQLite database for trade history
+- Risk metrics tracking
+- Market condition analysis
+- Performance statistics
 
-1. Create a virtual environment:
+## Installation
+
+1. Clone the repository:
 ```bash
-python -m venv venv
+git clone https://github.com/yourusername/CryptoBot.git
+cd CryptoBot
 ```
 
-2. Activate the virtual environment:
-- Windows: `venv\Scripts\activate`
-- Unix/MacOS: `source venv/bin/activate`
+2. Create and activate virtual environment:
+```bash
+python -m venv venv
+# Windows
+venv\Scripts\activate
+# Linux/Mac
+source venv/bin/activate
+```
 
 3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Copy `.env.example` to `.env` and configure your settings:
+4. Set up environment variables:
 ```bash
 cp .env.example .env
+# Edit .env with your configuration
 ```
 
-Key settings to configure:
-- `NETWORK`: Choose between mainnet-beta, testnet, or devnet
-- `RPC_URL`: Your preferred Solana RPC endpoint
-- Trading parameters (POSITION_SIZE, STOP_LOSS_PERCENT, etc.)
-- Risk management settings
+5. Initialize database:
+```bash
+python -m alembic upgrade head
+```
 
 ## Usage
 
-1. Ensure Phantom wallet extension is installed and configured in your browser
-
-2. Start the trading dashboard:
+1. Start the trading bot:
 ```bash
-streamlit run app.py
+python bot.py
 ```
 
-3. Connect your Phantom wallet when prompted
+2. Launch monitoring dashboard:
+```bash
+streamlit run monitoring_dashboard.py
+```
 
-4. Monitor trades and performance at `http://localhost:8501`
+## Configuration
 
-## Components
+The bot can be configured through:
+1. Environment variables (`.env` file)
+2. Configuration files in `config/`
+3. Command line arguments
 
-- `wallet.py`: Phantom wallet integration
-- `bot.py`: Core trading logic
-- `config.py`: Configuration management
-- `database.py`: Trade history and analytics
-- `app.py`: Web-based dashboard
+Key configuration parameters:
+- `MAX_POSITION_SIZE`: Maximum single position size (default: 10%)
+- `MAX_TOTAL_EXPOSURE`: Maximum total exposure (default: 50%)
+- `MAX_DRAWDOWN`: Maximum allowed drawdown (default: 15%)
+- `RISK_PER_TRADE`: Risk per trade (default: 2%)
+- `MIN_WIN_RATE`: Minimum required win rate (default: 40%)
 
-## Dashboard Features
+## Testing
 
-- Wallet connection status
-- Portfolio overview
-- Active trades monitoring
-- Historical performance
-- Risk metrics
-- Market analysis
+Run the test suite:
+```bash
+pytest
+```
 
-## Security Notes
+Run with coverage:
+```bash
+pytest --cov=. --cov-report=html
+```
 
-- Never share your Phantom wallet private key
-- Use appropriate slippage settings to prevent front-running
-- Start with small trade sizes while testing
-- Monitor transaction fees
-- Use official RPC endpoints or trusted providers
+## Monitoring
+
+The monitoring dashboard provides:
+1. Real-time performance metrics
+2. Risk analytics
+3. Trading activity visualization
+4. Historical analysis
+5. Alert monitoring
+
+Access the dashboard at `http://localhost:8501` after starting with Streamlit.
+
+## Safety Features
+
+1. Configuration validation
+2. System resource monitoring
+3. Database backup and recovery
+4. Error handling and logging
+5. Trade execution verification
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ## License
 
-MIT License - see LICENSE file for details
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Disclaimer
+
+This bot is for educational purposes only. Cryptocurrency trading carries significant risks. Always test thoroughly with small amounts first.
