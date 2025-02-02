@@ -49,56 +49,31 @@ class PhantomWalletManager:
     def initialize_with_address(self, address: str) -> Tuple[bool, str]:
         """Initialize wallet with a public address."""
         try:
-            logger.debug(f"Initializing wallet with address: {address}")
+            from solders.pubkey import Pubkey
+            import base58
             
-            # Convert address to Pubkey
+            # Convert address string to Pubkey
             try:
-                self._pubkey = Pubkey.from_string(address)
-                logger.debug(f"Successfully created Pubkey from address: {self._pubkey}")
+                decoded = base58.b58decode(address)
+                self._pubkey = Pubkey(decoded)
+                logger.info(f"Converted address to Pubkey: {self._pubkey}")
             except Exception as e:
-                error_msg = f"Invalid wallet address: {str(e)}"
-                logger.error(error_msg)
-                return False, error_msg
-            
-            # Test RPC connection
-            rpc_success, rpc_msg = self._test_rpc_connection()
-            if not rpc_success:
-                return False, rpc_msg
-            
-            # Test Solscan connection
-            solscan_success, solscan_msg = self._test_solscan_connection()
-            if not solscan_success:
-                logger.warning(solscan_msg)  # Just warn, don't fail
-            
-            # Get account info
-            account_info = self._get_solscan_account_info(address)
-            if account_info:
-                logger.debug("Successfully retrieved account info from Solscan")
-            
-            # Test balance check
+                logger.error(f"Failed to convert address to Pubkey: {str(e)}")
+                return False, f"Invalid wallet address format: {str(e)}"
+
+            # Test connection by checking balance
             try:
-                balance_resp = self.client.get_balance(address)
-                if not isinstance(balance_resp, GetBalanceResp):
-                    return False, "Invalid response type from get_balance"
-                
-                balance = balance_resp.value / 10**9  # Convert lamports to SOL
-                logger.debug(f"Connection test successful. Balance: {balance} SOL")
+                balance = self.client.get_balance(self._pubkey)
+                logger.info(f"Initial balance check successful: {balance.value if balance else 0} lamports")
                 self._is_connected = True
                 return True, "Wallet initialized successfully"
-                
             except Exception as e:
-                error_msg = f"Balance check failed: {str(e)}"
-                logger.error(error_msg)
-                logger.error(traceback.format_exc())
-                return False, error_msg
+                logger.error(f"Balance check failed: {str(e)}")
+                return False, f"Balance check failed: {str(e)}"
                 
         except Exception as e:
-            error_msg = f"Wallet initialization failed: {str(e)}"
-            logger.error(error_msg)
-            logger.error(traceback.format_exc())
-            self._pubkey = None
-            self._is_connected = False
-            return False, error_msg
+            logger.error(f"Wallet initialization failed: {str(e)}")
+            return False, f"Wallet initialization failed: {str(e)}"
 
     @property
     def pubkey(self) -> Pubkey:
