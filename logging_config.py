@@ -6,6 +6,8 @@ import logging
 import sys
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
+from functools import wraps
+from typing import Callable, Any
 
 def get_logger(name: str) -> logging.Logger:
     """Get a logger instance with the specified name"""
@@ -58,6 +60,29 @@ def get_logger(name: str) -> logging.Logger:
         logger.addHandler(console_handler)
     
     return logger
+
+def log_with_context(logger: logging.Logger) -> Callable:
+    """Decorator to add context logging to functions.
+    
+    Args:
+        logger: Logger instance to use
+        
+    Returns:
+        Decorator function
+    """
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            logger.debug(f"Entering {func.__name__}")
+            try:
+                result = func(*args, **kwargs)
+                logger.debug(f"Exiting {func.__name__}")
+                return result
+            except Exception as e:
+                logger.error(f"Error in {func.__name__}: {str(e)}")
+                raise
+        return wrapper
+    return decorator
 
 def setup_streamlit_logging():
     """Configure logging specifically for Streamlit"""
