@@ -7,7 +7,6 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
-import asyncio
 from bot import TradingBot
 from dotenv import load_dotenv
 
@@ -16,7 +15,7 @@ load_dotenv()
 # Page configuration
 st.set_page_config(
     page_title="Solana Trading Bot",
-    page_icon="🌙",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -43,35 +42,38 @@ if 'bot' not in st.session_state:
         
         # Generate new keypair
         from solders.keypair import Keypair
+        import os
         
-        # Create a new Solana keypair
-        keypair = Keypair()
-        secret_bytes = keypair.secret()
-        logger.debug(f"Generated new Solana keypair with public key: {keypair.pubkey()}")
+        try:
+            # Generate a new keypair with full 64-byte secret
+            random_bytes = os.urandom(32)  # Generate 32 random bytes for seed
+            keypair = Keypair.from_seed(random_bytes)  # This will create a proper Solana keypair
+            secret_bytes = keypair.secret()  # Get the secret key bytes
             
-        # Initialize wallet with keypair secret
-        try:
-            asyncio.run(wallet_manager.initialize_wallet(secret_bytes))
+            logger.debug(f"Generated new Solana keypair with public key: {keypair.pubkey()}")
+            logger.debug(f"Secret length: {len(secret_bytes)} bytes")
+                
+            # Initialize wallet with keypair secret
+            if not wallet_manager.initialize_wallet(secret_bytes):
+                raise RuntimeError("Failed to initialize wallet")
+                
             logger.debug("Initialized wallet with keypair")
-        except Exception as e:
-            logger.error(f"Failed to initialize wallet: {str(e)}")
-            raise
-        
-        # Create trading config for Solana memecoin trading
-        config = TradingConfig(
-            base_currency='SOL',
-            quote_currency='USDC',
-            position_size=0.1,     # 10% of available balance
-            stop_loss=0.02,        # 2% stop loss
-            take_profit=0.05,      # 5% take profit
-            max_slippage=0.01,     # 1% max slippage
-            network='mainnet-beta', # Solana network
-            max_positions=5,        # Maximum number of concurrent positions
-            max_trades_per_day=10   # Maximum number of trades per day
-        )
-        logger.debug("Created trading config")
-        
-        try:
+            
+            # Create trading config for Solana memecoin trading
+            config = TradingConfig(
+                base_currency='SOL',
+                quote_currency='USDC',
+                position_size=0.1,     # 10% of available balance
+                stop_loss=0.02,        # 2% stop loss
+                take_profit=0.05,      # 5% take profit
+                max_slippage=0.01,     # 1% max slippage
+                network='mainnet-beta', # Solana network
+                max_positions=5,        # Maximum number of concurrent positions
+                max_trades_per_day=10   # Maximum number of trades per day
+            )
+            logger.debug("Created trading config")
+            
+            # Initialize trading bot
             st.session_state.bot = TradingBot(wallet=wallet_manager, config=config)
             logger.debug("Created trading bot instance")
             
@@ -81,8 +83,9 @@ if 'bot' not in st.session_state:
             logger.debug(f"Connected to wallet address: {wallet_address}")
             
         except Exception as e:
-            logger.error(f"Failed to create trading bot: {str(e)}")
-            raise
+            logger.error(f"Failed during wallet/bot initialization: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise RuntimeError(f"Failed to initialize Trading Bot: {str(e)}")
             
     except Exception as e:
         st.error(f"Failed to initialize Trading Bot: {str(e)}")
@@ -106,29 +109,53 @@ def render_header():
         ))
     
     with col2:
-        if st.button("🔄 Refresh Data"):
-            st.rerun()
+        if st.button(" Refresh Data"):
+            st.experimental_rerun()
 
-async def render_wallet_info():
+def render_wallet_info():
     """Render wallet information section."""
     try:
         st.subheader("📊 Wallet Information")
         
         # Get wallet info
-        balance = await st.session_state.bot.get_balance()
+        wallet = st.session_state.bot.wallet
+        balance = wallet.get_balance()
+        token_balances = wallet.get_token_balances()
         
-        col1, col2 = st.columns(2)
+        # Create columns for wallet info
+        col1, col2, col3 = st.columns(3)
+        
         with col1:
-            st.metric("SOL Balance", f"{balance:.4f} SOL")
-        with col2:
-            st.metric("Connected Network", st.session_state.bot.config.network)
+            st.metric(
+                label="SOL Balance",
+                value=f"{balance:.4f} SOL",
+                delta=None
+            )
             
+            # Add Solscan link
+            explorer_url = wallet.get_explorer_url()
+            st.markdown(f"[View on Solscan]({explorer_url})")
+        
+        with col2:
+            # Show token balances
+            st.markdown("**Token Balances**")
+            if token_balances:
+                for symbol, amount in token_balances.items():
+                    st.write(f"{symbol}: {amount:.4f}")
+            else:
+                st.write("No tokens found")
+        
+        with col3:
+            if st.button("🔄 Refresh Balance"):
+                st.experimental_rerun()
+                
     except Exception as e:
+        logger.error(f"Error loading wallet info: {str(e)}")
         st.error(f"Error loading wallet info: {str(e)}")
 
 def render_trading_settings():
     """Render trading settings section."""
-    st.subheader("⚙️ Trading Settings")
+    st.subheader(" Trading Settings")
     
     config = st.session_state.bot.config
     
@@ -144,56 +171,181 @@ def render_trading_settings():
     """)
 
 def render_active_trades():
-    """Render active trades section"""
+    """Render active trades section."""
     st.subheader("Active Trades")
     
-    if st.session_state.bot.active_trades:
-        trades_df = pd.DataFrame.from_dict(
-            st.session_state.bot.active_trades,
-            orient='index'
-        ).reset_index()
-        
-        trades_df.columns = ['Token', 'Entry Price', 'Amount', 'Stop Loss', 'Take Profit']
-        st.dataframe(trades_df)
-    else:
-        st.info("No active trades")
+    try:
+        active_trades = st.session_state.bot.get_active_trades()
+        if active_trades:
+            # Create a DataFrame for better display
+            trades_data = []
+            for trade in active_trades:
+                trades_data.append({
+                    'Symbol': trade.symbol,
+                    'Side': trade.side.upper(),
+                    'Entry Price': f"${trade.entry_price:.4f}",
+                    'Quantity': f"{trade.quantity:.4f}",
+                    'Stop Loss': f"${trade.stop_loss:.4f}",
+                    'Take Profit': f"${trade.take_profit:.4f}",
+                    'Time': trade.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+                })
+            
+            if trades_data:
+                st.dataframe(pd.DataFrame(trades_data))
+            else:
+                st.info("No active trades")
+        else:
+            st.info("No active trades")
+            
+    except Exception as e:
+        logger.error(f"Error loading active trades: {str(e)}")
+        st.error(f"Error loading active trades: {str(e)}")
 
 def render_trade_history():
-    """Render trade history section"""
+    """Render trade history section."""
     st.subheader("Trade History")
-    st.info("Trade history will be implemented in a future update")
+    
+    try:
+        trade_history = st.session_state.bot.get_trade_history()
+        if trade_history:
+            # Create a DataFrame for better display
+            history_data = []
+            for trade in trade_history:
+                history_data.append({
+                    'Symbol': trade.symbol,
+                    'Side': trade.side.upper(),
+                    'Entry Price': f"${trade.entry_price:.4f}",
+                    'Quantity': f"{trade.quantity:.4f}",
+                    'Status': trade.status.upper(),
+                    'Time': trade.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+                })
+            
+            if history_data:
+                st.dataframe(pd.DataFrame(history_data))
+            else:
+                st.info("No trade history")
+        else:
+            st.info("No trade history")
+            
+    except Exception as e:
+        logger.error(f"Error loading trade history: {str(e)}")
+        st.error(f"Error loading trade history: {str(e)}")
 
-async def main():
+def render_trading_stats():
+    """Render trading statistics."""
+    st.subheader("Trading Statistics")
+    
+    try:
+        stats = st.session_state.bot.get_trading_stats()
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total Trades", stats['total_trades'])
+            st.metric("Active Trades", stats['active_trades'])
+            
+        with col2:
+            st.metric("Closed Trades", stats['closed_trades'])
+            st.metric("Cancelled Trades", stats['cancelled_trades'])
+            
+        with col3:
+            st.metric("Trades Today", stats['trades_today'])
+            
+    except Exception as e:
+        logger.error(f"Error loading trading stats: {str(e)}")
+        st.error(f"Error loading trading stats: {str(e)}")
+
+def main():
     """Main dashboard function"""
     render_header()
     
-    # Connect wallet button
-    if st.button("Connect Phantom Wallet"):
-        with st.spinner("Connecting to Phantom wallet..."):
-            connected = await st.session_state.bot.wallet.connect()
-            if connected:
-                st.success("Successfully connected to Phantom wallet!")
-            else:
-                st.error("Failed to connect to Phantom wallet")
+    # Initialize bot if not already done
+    if 'bot' not in st.session_state:
+        try:
+            from bot.trading_bot import TradingConfig
+            from bot.wallet.phantom_integration import PhantomWalletManager
+            import logging
+            
+            # Set up logging
+            logging.basicConfig(level=logging.DEBUG)
+            logger = logging.getLogger(__name__)
+            
+            logger.debug("Starting bot initialization...")
+            
+            # Initialize Phantom Wallet
+            wallet_manager = PhantomWalletManager()
+            logger.debug("Created wallet manager")
+            
+            # Create trading config for Solana memecoin trading
+            config = TradingConfig(
+                base_currency='SOL',
+                quote_currency='USDC',
+                position_size=0.1,     # 10% of available balance
+                stop_loss=0.02,        # 2% stop loss
+                take_profit=0.05,      # 5% take profit
+                max_slippage=0.01,     # 1% max slippage
+                network='mainnet-beta', # Solana network
+                max_positions=5,        # Maximum number of concurrent positions
+                max_trades_per_day=10   # Maximum number of trades per day
+            )
+            logger.debug("Created trading config")
+            
+            # Initialize trading bot
+            st.session_state.bot = TradingBot(wallet=wallet_manager, config=config)
+            logger.debug("Created trading bot instance")
+            
+        except Exception as e:
+            st.error(f"Failed to initialize Trading Bot: {str(e)}")
+            logger.exception("Bot initialization failed")
+            st.stop()
+    
+    # Wallet connection status
+    wallet = st.session_state.bot.wallet
+    if wallet.is_connected():
+        wallet_address = wallet.keypair.pubkey()
+        st.sidebar.success(f"Connected to wallet: {wallet_address}")
+    else:
+        st.sidebar.warning("Wallet not connected")
+    
+    # Wallet connection button
+    if not wallet.is_connected():
+        if st.button("Connect Phantom Wallet"):
+            with st.spinner("Connecting to Phantom wallet..."):
+                try:
+                    if wallet.connect():
+                        wallet_address = wallet.keypair.pubkey()
+                        st.sidebar.success(f"Connected to wallet: {wallet_address}")
+                        st.experimental_rerun()
+                    else:
+                        st.error("Failed to connect to Phantom wallet. Please check your credentials and try again.")
+                except Exception as e:
+                    logger.error(f"Wallet connection error: {str(e)}")
+                    st.error(f"Failed to connect: {str(e)}")
     
     # Main dashboard sections
-    await render_wallet_info()
-    render_trading_settings()
-    render_active_trades()
-    render_trade_history()
-    
-    # Start/Stop bot
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Start Trading Bot"):
-            st.session_state.bot_running = True
-            st.success("Trading bot started!")
-            asyncio.create_task(st.session_state.bot.start())
-    
-    with col2:
-        if st.button("Stop Trading Bot"):
-            st.session_state.bot_running = False
-            st.info("Trading bot stopped")
+    if wallet.is_connected():
+        render_wallet_info()
+        render_trading_settings()
+        render_active_trades()
+        render_trade_history()
+        render_trading_stats()
+        
+        # Start/Stop bot
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("Start Trading Bot"):
+                st.session_state.bot_running = True
+                st.success("Trading bot started!")
+                st.session_state.bot.start()
+        
+        with col2:
+            if st.button("Stop Trading Bot"):
+                st.session_state.bot_running = False
+                st.session_state.bot.stop()
+                st.info("Trading bot stopped")
+    else:
+        st.warning("Please connect your Phantom wallet to access the trading dashboard.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
