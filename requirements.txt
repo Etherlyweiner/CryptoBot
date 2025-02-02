@@ -1,34 +1,27 @@
 # Core dependencies
-aiohttp>=3.8.0
-aiohttp==3.9.1
+streamlit==1.26.0
+solana>=0.28.1,<0.29.0
+anchorpy==0.14.0
+solders>=0.10.0,<0.11.0
+base58==2.1.1
+aiohttp==3.9.3
 python-dotenv==1.0.0
 sqlalchemy==2.0.25
-cryptography==41.0.7
-prometheus-client>=0.16.0
-prometheus-client==0.19.0
-streamlit==1.31.0
+cryptography==42.0.5
+prometheus-client==0.20.0
 aiofiles==23.1.0
 nest-asyncio==1.5.7
 asyncio==3.4.3
 redis==5.0.1
-aioredis>=2.0.0
 aioredis==2.0.1
 
-# Solana dependencies
-solders==0.18.1  # Required by solana 0.28.1
-solana==0.30.2  # Required by anchorpy 0.14.0
-anchorpy==0.14.0  # Using older version for better compatibility
-websockets>=9.0,<12.0
-websockets==12.0
+# API and Web
 requests==2.31.0
+websockets>=9.0,<12.0
 
-# Data processing and ML
-scikit-learn>=1.0.2
-pandas>=1.4.0
-pandas==2.1.4
-numpy>=1.21.0
-numpy==1.24.3
-joblib>=1.1.0
+# Data processing
+pandas==2.2.0
+numpy==1.26.3
 joblib==1.3.2
 pyarrow==12.0.1
 ta==0.10.2
@@ -36,43 +29,38 @@ scikit-learn==1.4.0
 scipy>=1.11.4
 
 # Web server
-aiohttp-cors==0.7.0
+fastapi==0.109.0
+uvicorn==0.27.0.post1
 
 # Monitoring and metrics
-prometheus-client==0.19.0
 psutil==5.9.8
-pywin32==306
+pywin32>=308
 python-json-logger==2.0.7
-python-logging-handlers==0.1.0
 
 # Visualization
 plotly==5.16.1
-matplotlib>=3.8.2
-seaborn>=0.13.0
+matplotlib==3.8.2
 
 # Testing
 pytest==7.4.4
-pytest-asyncio>=0.20.0,<0.21.0  # Adjusted to match anchorpy requirement
-pytest-asyncio==0.23.3
+pytest-asyncio>=0.20.0,<0.21.0
 pytest-cov==4.1.0
+pytest-xprocess==0.18.1
 
 # Development
 black==24.1.1
 isort==5.12.0
-flake8==6.1.0
 mypy==1.8.0
 pylint==3.0.3
+flake8==6.1.0
+bandit==1.7.5
 
-# Security dependencies
-PyJWT>=2.4.0
-cryptography>=3.4.7
-bcrypt>=3.2.0
+# Documentation
+sphinx==7.1.2
+sphinx-rtd-theme==1.3.0
 
-# Additional dependencies
-python-telegram-bot==13.7  # Using much older version for httpx compatibility
-python-binance>=1.0.19
+# Trading
 ccxt>=4.1.87
 PyJWT==2.8.0
 pre-commit==3.3.3
-base58==2.1.1
 alembic==1.13.1
