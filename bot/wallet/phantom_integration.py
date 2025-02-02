@@ -66,15 +66,17 @@ class PhantomWalletManager:
             try:
                 # Create a new client instance for the balance check
                 rpc_client = Client(self.SOLANA_RPC)
-                balance_response = rpc_client.get_balance(str(self._pubkey))
+                # Convert Pubkey to string for the RPC call
+                pubkey_str = str(self._pubkey)
+                balance_response = rpc_client.get_balance(pubkey_str)
                 
-                if balance_response.value is not None:
+                if hasattr(balance_response, 'value'):
                     logger.info(f"Initial balance check successful: {balance_response.value} lamports")
                     self._is_connected = True
                     return True, "Wallet initialized successfully"
                 else:
-                    logger.error("Balance response was None")
-                    return False, "Failed to get balance: Response was None"
+                    logger.error("Balance response was None or invalid")
+                    return False, "Failed to get balance: Invalid response"
                     
             except Exception as e:
                 logger.error(f"Balance check failed: {str(e)}")
