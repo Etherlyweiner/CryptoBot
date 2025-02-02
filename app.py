@@ -47,58 +47,42 @@ if 'bot' not in st.session_state:
         wallet_manager = PhantomWalletManager()
         logger.debug("Created wallet manager")
         
-        # Generate new keypair
-        from solders.keypair import Keypair
-        import os
+        # Initialize with wallet address
+        success, message = wallet_manager.initialize_with_address("8jqv2AKPGYwojLRHQZLokkYdtHycs8HAVGDMqZUvTByB")
+        if not success:
+            logger.error(f"Failed to initialize wallet: {message}")
+            raise RuntimeError(f"Failed to initialize wallet: {message}")
         
-        try:
-            # Generate a new keypair with full 64-byte secret
-            random_bytes = os.urandom(32)  # Generate 32 random bytes for seed
-            keypair = Keypair.from_seed(random_bytes)  # This will create a proper Solana keypair
-            secret_bytes = keypair.secret()  # Get the secret key bytes
-            
-            logger.debug(f"Generated new Solana keypair with public key: {keypair.pubkey()}")
-            logger.debug(f"Secret length: {len(secret_bytes)} bytes")
-                
-            # Initialize wallet with keypair secret
-            if not wallet_manager.initialize_wallet(secret_bytes):
-                raise RuntimeError("Failed to initialize wallet")
-                
-            logger.debug("Initialized wallet with keypair")
-            
-            # Create trading config for Solana memecoin trading
-            config = TradingConfig(
-                base_currency='SOL',
-                quote_currency='USDC',
-                position_size=0.1,     # 10% of available balance
-                stop_loss=0.02,        # 2% stop loss
-                take_profit=0.05,      # 5% take profit
-                max_slippage=0.01,     # 1% max slippage
-                network='mainnet-beta', # Solana network
-                max_positions=5,        # Maximum number of concurrent positions
-                max_trades_per_day=10   # Maximum number of trades per day
-            )
-            logger.debug("Created trading config")
-            
-            # Initialize trading bot
-            st.session_state.bot = TradingBot(wallet=wallet_manager, config=config)
-            logger.debug("Created trading bot instance")
-            
-            # Show wallet address
-            wallet_address = wallet_manager.pubkey
-            st.sidebar.success(f"Connected to wallet: {wallet_address}")
-            logger.debug(f"Connected to wallet address: {wallet_address}")
-            
-        except Exception as e:
-            logger.error(f"Failed during wallet/bot initialization: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise RuntimeError(f"Failed to initialize Trading Bot: {str(e)}")
+        logger.debug("Wallet initialized successfully")
+        
+        # Create trading config for Solana memecoin trading
+        config = TradingConfig(
+            base_currency='SOL',
+            quote_currency='USDC',
+            position_size=0.1,     # 10% of available balance
+            stop_loss=0.02,        # 2% stop loss
+            take_profit=0.05,      # 5% take profit
+            max_slippage=0.01,     # 1% max slippage
+            network='mainnet-beta', # Solana network
+            max_positions=5,        # Maximum number of concurrent positions
+            max_trades_per_day=10   # Maximum number of trades per day
+        )
+        logger.debug("Created trading config")
+        
+        # Initialize trading bot
+        st.session_state.bot = TradingBot(wallet=wallet_manager, config=config)
+        logger.debug("Created trading bot instance")
+        
+        # Show wallet address
+        wallet_address = wallet_manager.pubkey
+        st.sidebar.success(f"Connected to wallet: {wallet_address}")
+        logger.debug(f"Connected to wallet address: {wallet_address}")
             
     except Exception as e:
-        st.error(f"Failed to initialize Trading Bot: {str(e)}")
-        logger.exception("Bot initialization failed")
-        st.stop()
-
+        logger.error(f"Failed during wallet/bot initialization: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise RuntimeError(f"Failed to initialize Trading Bot: {str(e)}")
+            
 def render_header():
     """Render dashboard header"""
     st.title("Solana Trading Bot Dashboard")
@@ -277,6 +261,14 @@ def initialize_bot():
         # Initialize Phantom Wallet
         wallet_manager = PhantomWalletManager()
         logger.debug("Created wallet manager")
+        
+        # Initialize with wallet address
+        success, message = wallet_manager.initialize_with_address("8jqv2AKPGYwojLRHQZLokkYdtHycs8HAVGDMqZUvTByB")
+        if not success:
+            logger.error(f"Failed to initialize wallet: {message}")
+            return False, f"Failed to initialize wallet: {message}"
+        
+        logger.debug("Wallet initialized successfully")
         
         # Create trading config
         config = TradingConfig(
