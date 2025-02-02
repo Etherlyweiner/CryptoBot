@@ -57,11 +57,16 @@ class TradingBot:
         self.trades_today = 0
         self.last_trade_reset = datetime.now().date()
         self._trading_task = None
+        self.MAX_RETRIES = 5  # Maximum number of retries for failed trades
+        self.RETRY_DELAY = 5  # Delay in seconds between retries
         
         # Initialize metrics
         self.trade_count = metrics.trade_count
         self.position_value = metrics.position_value
         self.pnl = metrics.pnl
+        
+        # Update max slippage to 5%
+        self.config.max_slippage = 0.05
         
         # Connect wallet if not already connected
         if not self.wallet.is_connected():
@@ -126,6 +131,75 @@ class TradingBot:
                 self._trading_task.cancel()
             logger.info("Trading bot stopped")
     
+    async def _execute_trade(self, trade: Trade, retries: int = 0) -> bool:
+        """Execute a trade with retry logic."""
+        try:
+            # Your existing trade execution logic here
+            # This is a placeholder - implement actual trade execution
+            logger.info(f"Attempting to execute trade: {trade}")
+            
+            # Simulate trade execution (replace with actual implementation)
+            success = await self._place_order(trade)
+            
+            if success:
+                logger.info(f"Trade executed successfully: {trade}")
+                return True
+            
+            if retries < self.MAX_RETRIES:
+                logger.warning(f"Trade failed, retrying ({retries + 1}/{self.MAX_RETRIES})")
+                await asyncio.sleep(self.RETRY_DELAY)
+                return await self._execute_trade(trade, retries + 1)
+            else:
+                logger.error(f"Trade failed after {self.MAX_RETRIES} attempts")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error executing trade: {str(e)}")
+            if retries < self.MAX_RETRIES:
+                logger.warning(f"Retrying trade after error ({retries + 1}/{self.MAX_RETRIES})")
+                await asyncio.sleep(self.RETRY_DELAY)
+                return await self._execute_trade(trade, retries + 1)
+            return False
+
+    async def _place_order(self, trade: Trade) -> bool:
+        """Place an order with the specified slippage tolerance."""
+        try:
+            # Your order placement logic here
+            # This is a placeholder - implement actual order placement
+            
+            # Example implementation:
+            # 1. Calculate price with slippage
+            slippage_factor = 1 + (self.config.max_slippage if trade.side == 'buy' else -self.config.max_slippage)
+            adjusted_price = trade.entry_price * slippage_factor
+            
+            # 2. Place the order
+            logger.info(f"Placing {trade.side} order for {trade.quantity} {trade.symbol} at {adjusted_price}")
+            
+            # 3. Wait for confirmation
+            # Add your order confirmation logic here
+            
+            return True  # Return True if order was placed successfully
+            
+        except Exception as e:
+            logger.error(f"Error placing order: {str(e)}")
+            return False
+
+    async def _update_trade(self, trade: Trade):
+        """Update a single trade."""
+        try:
+            # TODO: Implement trade update logic
+            pass
+        except Exception as e:
+            logger.error(f"Error updating trade {trade}: {str(e)}")
+    
+    async def _find_trading_opportunities(self):
+        """Find new trading opportunities."""
+        try:
+            # TODO: Implement trading opportunity detection
+            pass
+        except Exception as e:
+            logger.error(f"Error finding trading opportunities: {str(e)}")
+
     async def _trading_loop(self):
         """Main trading loop."""
         while self.is_running:
@@ -153,7 +227,11 @@ class TradingBot:
                     await self._update_trade(trade)
                 
                 # Look for new trading opportunities
-                await self._find_trading_opportunities()
+                opportunities = await self._find_trading_opportunities()
+                for opp in opportunities:
+                    if await self._execute_trade(opp):
+                        self.active_trades.append(opp)
+                        self.trades_today += 1
                 
                 # Sleep before next iteration
                 await asyncio.sleep(1)  # Adjust sleep time as needed
@@ -161,19 +239,3 @@ class TradingBot:
             except Exception as e:
                 logger.error(f"Error in trading loop: {str(e)}")
                 await asyncio.sleep(5)  # Sleep before retrying
-    
-    async def _update_trade(self, trade: Trade):
-        """Update a single trade."""
-        try:
-            # TODO: Implement trade update logic
-            pass
-        except Exception as e:
-            logger.error(f"Error updating trade {trade}: {str(e)}")
-    
-    async def _find_trading_opportunities(self):
-        """Find new trading opportunities."""
-        try:
-            # TODO: Implement trading opportunity detection
-            pass
-        except Exception as e:
-            logger.error(f"Error finding trading opportunities: {str(e)}")
