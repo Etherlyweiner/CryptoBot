@@ -1,221 +1,188 @@
-"""
-Market monitoring module for tracking new coin launches and market data
-"""
+"""Market monitoring module for tracking token prices and generating trading signals."""
 
-import aiohttp
 import asyncio
 import logging
-from bs4 import BeautifulSoup
-import json
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-import pandas as pd
-from database import Database, NewToken
-from logging_config import get_logger
 
-logger = get_logger('MarketMonitor')
+import aiohttp
+import requests
+
+logger = logging.getLogger(__name__)
 
 class MarketMonitor:
-    def __init__(self, db: Database):
-        """Initialize market monitor"""
-        self.db = db
-        self.session = None
-        self.sources = {
-            'pump_fun': 'https://pump.fun/board',
-            'dexscreener_solana': 'https://api.dexscreener.com/latest/dex/tokens/solana/',
+    """Monitors market data for trading opportunities and generates signals.
+    
+    This class handles market data collection, analysis, and alert generation
+    for potential trading opportunities in the Solana ecosystem.
+    """
+    
+    DEXSCREENER_API = "https://api.dexscreener.com/latest/dex"
+    BIRDEYE_API = "https://public-api.birdeye.so/public"
+    
+    def __init__(self, pair_address: str, birdeye_api_key: str):
+        """Initialize the market monitor.
+        
+        Args:
+            pair_address: The DEX pair address to monitor
+            birdeye_api_key: API key for Birdeye API access
+        """
+        self.pair_address = pair_address
+        self.headers = {
+            'X-API-KEY': birdeye_api_key,
+            'Accept': 'application/json'
         }
-
-    async def init_session(self):
-        """Initialize aiohttp session"""
-        if not self.session:
-            self.session = aiohttp.ClientSession()
-
-    async def close_session(self):
-        """Close aiohttp session"""
-        if self.session:
-            await self.session.close()
-            self.session = None
-
-    async def fetch_pump_fun_data(self) -> List[Dict[str, Any]]:
-        """Fetch data from pump.fun"""
-        try:
-            await self.init_session()
-            async with self.session.get(self.sources['pump_fun']) as response:
-                if response.status != 200:
-                    logger.error(f"Failed to fetch pump.fun data: {response.status}")
-                    return []
-
-                html = await response.text()
-                soup = BeautifulSoup(html, 'html.parser')
-                
-                tokens = []
-                # Parse the board data
-                board_items = soup.find_all('div', class_='board-item')
-                for item in board_items:
-                    try:
-                        token_data = {
-                            'source': 'pump_fun',
-                            'timestamp': datetime.utcnow(),
-                            'symbol': item.find('div', class_='token-symbol').text.strip(),
-                            'name': item.find('div', class_='token-name').text.strip(),
-                            'chain': item.find('div', class_='chain').text.strip(),
-                            'launch_date': datetime.strptime(
-                                item.find('div', class_='launch-date').text.strip(),
-                                '%Y-%m-%d %H:%M:%S'
-                            ),
-                            'description': item.find('div', class_='description').text.strip(),
-                            'website': item.find('a', class_='website-link')['href'],
-                            'social_links': {
-                                'telegram': item.find('a', class_='telegram-link')['href'],
-                                'twitter': item.find('a', class_='twitter-link')['href']
-                            }
-                        }
-                        tokens.append(token_data)
-                    except Exception as e:
-                        logger.error(f"Error parsing pump.fun token data: {str(e)}")
-                        continue
-
-                return tokens
-
-        except Exception as e:
-            logger.error(f"Error fetching pump.fun data: {str(e)}")
-            return []
-
-    async def fetch_dexscreener_data(self, token_address: str) -> Optional[Dict[str, Any]]:
-        """Fetch data from DexScreener"""
-        try:
-            await self.init_session()
-            url = f"{self.sources['dexscreener_solana']}{token_address}"
+        
+    async def get_token_metadata(self, token_address: str) -> Dict[str, Any]:
+        """Fetch token metadata from Birdeye API.
+        
+        Args:
+            token_address: The token address to fetch metadata for
             
-            async with self.session.get(url) as response:
-                if response.status != 200:
-                    logger.error(f"Failed to fetch DexScreener data: {response.status}")
-                    return None
-
-                data = await response.json()
-                if not data.get('pairs'):
-                    return None
-
-                pair = data['pairs'][0]  # Get the first trading pair
-                return {
-                    'source': 'dexscreener',
-                    'timestamp': datetime.utcnow(),
-                    'symbol': pair['baseToken']['symbol'],
-                    'name': pair['baseToken']['name'],
-                    'chain': 'Solana',
-                    'contract_address': token_address,
-                    'initial_price': float(pair['priceUsd']),
-                    'initial_market_cap': float(pair['fdv']),
-                    'social_links': {
-                        'website': pair.get('url'),
-                        'telegram': pair.get('telegram'),
-                        'twitter': pair.get('twitter')
-                    }
-                }
-
-        except Exception as e:
-            logger.error(f"Error fetching DexScreener data: {str(e)}")
-            return None
-
-    async def monitor_markets(self):
-        """Monitor markets for new tokens and updates"""
+        Returns:
+            Dict containing token metadata or empty dict on error
+        """
         try:
-            # Fetch data from pump.fun
-            pump_fun_tokens = await self.fetch_pump_fun_data()
-            for token in pump_fun_tokens:
-                self.db.store_new_token(token)
-                logger.info(f"Stored new token from pump.fun: {token['symbol']}")
-
-            # Fetch data from DexScreener for the specified token
-            dex_token = await self.fetch_dexscreener_data(
-                "9ctxeyrstwtklfvts6c7rfqc7ptxy42ypdqcrhtv53ao"
-            )
-            if dex_token:
-                self.db.store_new_token(dex_token)
-                logger.info(f"Stored new token from DexScreener: {dex_token['symbol']}")
-
+            async with aiohttp.ClientSession() as session:
+                url = f"{self.BIRDEYE_API}/token_metadata/{token_address}"
+                async with session.get(url, headers=self.headers) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        logger.info("Successfully fetched token metadata for %s", token_address)
+                        return data
+                    logger.error("Failed to fetch token metadata: %s", await response.text())
+                    return {}
         except Exception as e:
-            logger.error(f"Error in market monitoring: {str(e)}")
-
-    def analyze_token(self, token_data: Dict[str, Any]) -> Dict[str, float]:
-        """Analyze token data and generate scores"""
-        try:
-            # Initial momentum score based on price and volume
-            momentum_score = 0.0
-            if token_data.get('initial_price') and token_data.get('initial_market_cap'):
-                # Add your momentum calculation logic here
-                pass
-
-            # Social score based on social media presence
-            social_score = 0.0
-            if token_data.get('social_links'):
-                social_links = token_data['social_links']
-                social_score += 0.3 if social_links.get('website') else 0
-                social_score += 0.4 if social_links.get('telegram') else 0
-                social_score += 0.3 if social_links.get('twitter') else 0
-
-            # Risk score based on various factors
-            risk_score = 0.0
-            # Add your risk calculation logic here
-
-            # Overall opportunity score
-            opportunity_score = (
-                0.4 * momentum_score +
-                0.3 * social_score +
-                0.3 * (1 - risk_score)  # Inverse of risk score
-            )
-
-            return {
-                'momentum_score': momentum_score,
-                'social_score': social_score,
-                'risk_score': risk_score,
-                'opportunity_score': opportunity_score
-            }
-
-        except Exception as e:
-            logger.error(f"Error analyzing token data: {str(e)}")
+            logger.error("Error fetching token metadata: %s", str(e))
             return {}
 
-    def generate_alerts(self, token_data: Dict[str, Any], analysis: Dict[str, float]):
-        """Generate alerts based on token analysis"""
-        alerts = []
-
-        # High opportunity score alert
-        if analysis['opportunity_score'] >= 0.8:
-            alerts.append({
-                'timestamp': datetime.utcnow(),
-                'symbol': token_data['symbol'],
-                'name': token_data['name'],
-                'opportunity_score': analysis['opportunity_score'],
-                'momentum_score': analysis['momentum_score'],
-                'social_score': analysis['social_score'],
-                'risk_score': analysis['risk_score'],
-                'alert_message': f"High opportunity token detected: {token_data['symbol']}"
-            })
-
-        # Strong momentum alert
-        if analysis['momentum_score'] >= 0.8:
-            alerts.append({
-                'timestamp': datetime.utcnow(),
-                'symbol': token_data['symbol'],
-                'name': token_data['name'],
-                'opportunity_score': analysis['opportunity_score'],
-                'momentum_score': analysis['momentum_score'],
-                'social_score': analysis['social_score'],
-                'risk_score': analysis['risk_score'],
-                'alert_message': f"Strong momentum detected: {token_data['symbol']}"
-            })
-
-        return alerts
-
-    async def run_monitoring_loop(self):
-        """Run continuous market monitoring"""
+    def fetch_market_data(self) -> Dict[str, Any]:
+        """Fetch market data from DexScreener API.
+        
+        Returns:
+            Dict containing market data or empty dict on error
+        """
         try:
-            while True:
-                await self.monitor_markets()
-                # Sleep for 5 minutes before next check
-                await asyncio.sleep(300)
+            response = requests.get(
+                f"{self.DEXSCREENER_API}/pairs/solana/{self.pair_address}",
+                headers=self.headers,
+                timeout=10
+            )
+            response.raise_for_status()
+            logger.info("Successfully fetched market data for pair %s", self.pair_address)
+            return response.json()
+        except requests.RequestException as e:
+            logger.error("Failed to fetch market data: %s", str(e))
+            return {}
+
+    async def get_price_impact(self, token_address: str, amount_usd: float) -> Dict[str, Any]:
+        """Calculate price impact for a given trade amount.
+        
+        Args:
+            token_address: The token address to check
+            amount_usd: The trade amount in USD
+            
+        Returns:
+            Dict containing price impact data or empty dict on error
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"{self.BIRDEYE_API}/price_impact/{token_address}"
+                params = {'amount': str(amount_usd)}
+                async with session.get(url, headers=self.headers, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        logger.info("Successfully calculated price impact for %s", token_address)
+                        return data
+                    logger.error("Failed to get price impact: %s", await response.text())
+                    return {}
         except Exception as e:
-            logger.error(f"Error in monitoring loop: {str(e)}")
-        finally:
-            await self.close_session()
+            logger.error("Error calculating price impact: %s", str(e))
+            return {}
+
+    def analyze_token(self, token_data: Dict[str, Any]) -> Dict[str, float]:
+        """Analyze token data for trading signals.
+        
+        Args:
+            token_data: Dict containing token market data
+            
+        Returns:
+            Dict containing analysis results
+        """
+        try:
+            # Extract relevant metrics
+            price = float(token_data.get('priceUsd', 0))
+            volume_24h = float(token_data.get('volume24h', 0))
+            liquidity_usd = float(token_data.get('liquidityUsd', 0))
+            price_change_24h = float(token_data.get('priceChange24h', 0))
+            
+            # Calculate metrics
+            volume_to_liquidity = volume_24h / liquidity_usd if liquidity_usd > 0 else 0
+            momentum_score = price_change_24h * volume_to_liquidity
+            liquidity_score = min(1.0, liquidity_usd / 1000000)  # Normalize to 1M USD
+            opportunity_score = momentum_score * liquidity_score
+            
+            return {
+                'price': price,
+                'volume_24h': volume_24h,
+                'liquidity_usd': liquidity_usd,
+                'price_change_24h': price_change_24h,
+                'volume_to_liquidity': volume_to_liquidity,
+                'momentum_score': momentum_score,
+                'liquidity_score': liquidity_score,
+                'opportunity_score': opportunity_score
+            }
+        except Exception as e:
+            logger.error("Error analyzing token data: %s", str(e))
+            return {}
+
+    def generate_alerts(self, token_data: Dict[str, Any], analysis: Dict[str, float]) -> List[Dict[str, Any]]:
+        """Generate alerts based on token analysis.
+        
+        Args:
+            token_data: Dict containing token market data
+            analysis: Dict containing analysis results
+            
+        Returns:
+            List of alert dictionaries
+        """
+        alerts = []
+        try:
+            # Price movement alerts
+            if analysis['price_change_24h'] > 10:
+                alerts.append({
+                    'type': 'PRICE_SURGE',
+                    'message': f"Price surged {analysis['price_change_24h']}% in 24h",
+                    'severity': 'high',
+                    'timestamp': datetime.now().isoformat()
+                })
+            elif analysis['price_change_24h'] < -10:
+                alerts.append({
+                    'type': 'PRICE_DROP',
+                    'message': f"Price dropped {abs(analysis['price_change_24h'])}% in 24h",
+                    'severity': 'high',
+                    'timestamp': datetime.now().isoformat()
+                })
+                
+            # Volume alerts
+            if analysis['volume_to_liquidity'] > 2:
+                alerts.append({
+                    'type': 'HIGH_VOLUME',
+                    'message': f"High volume relative to liquidity: {analysis['volume_to_liquidity']:.2f}x",
+                    'severity': 'medium',
+                    'timestamp': datetime.now().isoformat()
+                })
+                
+            # Opportunity score alerts
+            if analysis['opportunity_score'] > 0.5:
+                alerts.append({
+                    'type': 'TRADING_OPPORTUNITY',
+                    'message': f"High opportunity score: {analysis['opportunity_score']:.2f}",
+                    'severity': 'high',
+                    'timestamp': datetime.now().isoformat()
+                })
+                
+            return alerts
+        except Exception as e:
+            logger.error("Error generating alerts: %s", str(e))
+            return []
