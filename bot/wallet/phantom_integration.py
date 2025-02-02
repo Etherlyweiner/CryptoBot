@@ -13,13 +13,16 @@ import json
 import os
 from typing import Optional, Dict, Any, Tuple
 import base58
+from solana.rpc.types import TxOpts
+from solders.rpc.errors import InvalidParamsMessage
 
 logger = logging.getLogger(__name__)
 
 class PhantomWalletManager:
     """Manages Phantom wallet integration."""
     
-    SOLSCAN_API_BASE = "https://public-api.solscan.io"
+    SOLSCAN_API_BASE = "https://api.solscan.io"
+    SOLSCAN_ACCOUNT_ENDPOINT = "/v2/account/{address}"
     SOLANA_RPC = "https://api.mainnet-beta.solana.com"
     DEFAULT_WALLET = "8jqv2AKPGYwojLRHQZLokkYdtHycs8HAVGDMqZUvTByB"  # Your wallet address
     
@@ -125,7 +128,7 @@ class PhantomWalletManager:
                 headers['token'] = self._solscan_api_key
 
             # Test with default wallet address
-            url = f"{self.SOLSCAN_API_BASE}/account/{self.DEFAULT_WALLET}"
+            url = f"{self.SOLSCAN_API_BASE}{self.SOLSCAN_ACCOUNT_ENDPOINT.format(address=self.DEFAULT_WALLET)}"
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             
@@ -144,7 +147,7 @@ class PhantomWalletManager:
             if self._solscan_api_key:
                 headers['token'] = self._solscan_api_key
 
-            url = f"{self.SOLSCAN_API_BASE}/account/{address}"
+            url = f"{self.SOLSCAN_API_BASE}{self.SOLSCAN_ACCOUNT_ENDPOINT.format(address=address)}"
             logger.debug(f"Requesting Solscan info for address: {address}")
             response = requests.get(url, headers=headers)
             response.raise_for_status()
@@ -156,6 +159,15 @@ class PhantomWalletManager:
             logger.error(f"Failed to get Solscan account info: {str(e)}")
             logger.error(traceback.format_exc())
             return None
+
+    def _safe_rpc_call(self, fn, *args):
+        try:
+            return fn(*args)
+        except InvalidParamsMessage as e:
+            logger.error(f"RPC Invalid Params: {str(e)}")
+        except Exception as e:
+            logger.error(f"RPC Error: {str(e)}")
+        return None
 
     def get_balance(self) -> float:
         """Get wallet SOL balance."""
@@ -172,7 +184,9 @@ class PhantomWalletManager:
                 return float(account_info['lamports']) / 10**9
             
             # Fallback to RPC
-            balance_resp = self.client.get_balance(address)
+            balance_resp = self._safe_rpc_call(self.client.get_balance, address)
+            if balance_resp is None:
+                raise RuntimeError("Failed to get balance")
             if not isinstance(balance_resp, GetBalanceResp):
                 raise RuntimeError("Invalid response type from get_balance")
                 
