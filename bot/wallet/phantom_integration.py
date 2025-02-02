@@ -51,6 +51,7 @@ class PhantomWalletManager:
         try:
             from solders.pubkey import Pubkey
             import base58
+            from solana.rpc.api import Client
             
             # Convert address string to Pubkey
             try:
@@ -63,10 +64,18 @@ class PhantomWalletManager:
 
             # Test connection by checking balance
             try:
-                balance = self.client.get_balance(self._pubkey)
-                logger.info(f"Initial balance check successful: {balance.value if balance else 0} lamports")
-                self._is_connected = True
-                return True, "Wallet initialized successfully"
+                # Create a new client instance for the balance check
+                rpc_client = Client(self.SOLANA_RPC)
+                balance_response = rpc_client.get_balance(str(self._pubkey))
+                
+                if balance_response.value is not None:
+                    logger.info(f"Initial balance check successful: {balance_response.value} lamports")
+                    self._is_connected = True
+                    return True, "Wallet initialized successfully"
+                else:
+                    logger.error("Balance response was None")
+                    return False, "Failed to get balance: Response was None"
+                    
             except Exception as e:
                 logger.error(f"Balance check failed: {str(e)}")
                 return False, f"Balance check failed: {str(e)}"
