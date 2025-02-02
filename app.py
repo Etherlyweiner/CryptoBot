@@ -266,6 +266,43 @@ def render_trading_stats():
         logger.error(traceback.format_exc())
         st.error(f"Error loading trading stats: {str(e)}")
 
+def initialize_bot():
+    """Initialize the trading bot."""
+    try:
+        from bot.trading_bot import TradingConfig
+        from bot.wallet.phantom_integration import PhantomWalletManager
+        
+        logger.debug("Starting bot initialization...")
+        
+        # Initialize Phantom Wallet
+        wallet_manager = PhantomWalletManager()
+        logger.debug("Created wallet manager")
+        
+        # Create trading config
+        config = TradingConfig(
+            base_currency='SOL',
+            quote_currency='USDC',
+            position_size=0.1,     # 10% of available balance
+            stop_loss=0.02,        # 2% stop loss
+            take_profit=0.05,      # 5% take profit
+            max_slippage=0.01,     # 1% max slippage
+            network='mainnet-beta', # Solana network
+            max_positions=5,        # Maximum number of concurrent positions
+            max_trades_per_day=10   # Maximum number of trades per day
+        )
+        logger.debug("Created trading config")
+        
+        # Initialize trading bot
+        st.session_state.bot = TradingBot(wallet=wallet_manager, config=config)
+        logger.debug("Created trading bot instance")
+        return True, "Bot initialized successfully"
+        
+    except Exception as e:
+        error_msg = f"Failed to initialize Trading Bot: {str(e)}"
+        logger.error(error_msg)
+        logger.error(traceback.format_exc())
+        return False, error_msg
+
 def main():
     """Main dashboard function"""
     render_header()
