@@ -7,6 +7,7 @@ from decimal import Decimal
 import json
 from datetime import datetime
 from dataclasses import dataclass, field
+import aiohttp
 
 from bot.wallet.phantom_integration import PhantomWalletManager
 from cache_manager import cache_manager, market_cache
@@ -184,21 +185,124 @@ class TradingBot:
             logger.error(f"Error placing order: {str(e)}")
             return False
 
+    async def _fetch_market_data(self, symbol: str) -> Optional[Dict]:
+        """Fetch market data for a symbol."""
+        try:
+            # Use Jupiter API to get market data
+            url = f"https://price.jup.ag/v4/price?ids={symbol}"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data and "data" in data and symbol in data["data"]:
+                            return data["data"][symbol]
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching market data for {symbol}: {str(e)}")
+            return None
+
+    async def _analyze_token(self, symbol: str) -> Optional[Trade]:
+        """Analyze a token for trading opportunities."""
+        try:
+            market_data = await self._fetch_market_data(symbol)
+            if not market_data:
+                return None
+
+            current_price = float(market_data.get("price", 0))
+            if current_price <= 0:
+                return None
+
+            # Get recent price history
+            price_change = float(market_data.get("price_change_24h", 0))
+            volume = float(market_data.get("volume_24h", 0))
+
+            # Simple trading strategy (customize as needed)
+            # Buy if:
+            # 1. Price has dropped more than 5% in 24h
+            # 2. 24h volume is significant (> 1000 SOL)
+            if price_change < -5 and volume > 1000:
+                # Calculate position size based on wallet balance
+                wallet_balance = self.get_balance()
+                position_size = wallet_balance * self.config.position_size
+
+                # Create trade object
+                trade = Trade(
+                    symbol=symbol,
+                    entry_price=current_price,
+                    quantity=position_size / current_price,
+                    side="buy",
+                    stop_loss=current_price * (1 - self.config.stop_loss),
+                    take_profit=current_price * (1 + self.config.take_profit)
+                )
+                logger.info(f"Found trading opportunity: {trade}")
+                return trade
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error analyzing token {symbol}: {str(e)}")
+            return None
+
+    async def _find_trading_opportunities(self) -> List[Trade]:
+        """Find new trading opportunities."""
+        try:
+            opportunities = []
+            
+            # List of tokens to monitor (customize as needed)
+            tokens_to_monitor = [
+                "BONK", "SAMO", "BOME", "MYRO", "WIF"  # Popular Solana memecoins
+            ]
+            
+            # Analyze each token
+            for token in tokens_to_monitor:
+                try:
+                    trade = await self._analyze_token(token)
+                    if trade:
+                        opportunities.append(trade)
+                except Exception as e:
+                    logger.error(f"Error analyzing {token}: {str(e)}")
+                    continue
+                
+                # Add small delay between API calls
+                await asyncio.sleep(0.5)
+            
+            if opportunities:
+                logger.info(f"Found {len(opportunities)} trading opportunities")
+            return opportunities
+
+        except Exception as e:
+            logger.error(f"Error finding trading opportunities: {str(e)}")
+            return []
+
     async def _update_trade(self, trade: Trade):
         """Update a single trade."""
         try:
-            # TODO: Implement trade update logic
-            pass
+            if trade.status != "open":
+                return
+
+            # Get current price
+            market_data = await self._fetch_market_data(trade.symbol)
+            if not market_data:
+                return
+
+            current_price = float(market_data.get("price", 0))
+            if current_price <= 0:
+                return
+
+            # Check stop loss
+            if current_price <= trade.stop_loss:
+                logger.info(f"Stop loss triggered for {trade.symbol} at {current_price}")
+                trade.status = "closed"
+                return
+
+            # Check take profit
+            if current_price >= trade.take_profit:
+                logger.info(f"Take profit triggered for {trade.symbol} at {current_price}")
+                trade.status = "closed"
+                return
+
         except Exception as e:
             logger.error(f"Error updating trade {trade}: {str(e)}")
-    
-    async def _find_trading_opportunities(self):
-        """Find new trading opportunities."""
-        try:
-            # TODO: Implement trading opportunity detection
-            pass
-        except Exception as e:
-            logger.error(f"Error finding trading opportunities: {str(e)}")
 
     async def _trading_loop(self):
         """Main trading loop."""
