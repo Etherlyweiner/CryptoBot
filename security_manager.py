@@ -45,7 +45,8 @@ class SecurityManager:
         )
         
         # Load IP whitelist
-        self.ip_whitelist: Set[ipaddress.IPv4Network] = set()
+        self.ip_whitelist_v4: Set[ipaddress.IPv4Network] = set()
+        self.ip_whitelist_v6: Set[ipaddress.IPv6Network] = set()
         self.load_ip_whitelist()
         
         # API key storage
@@ -60,22 +61,38 @@ class SecurityManager:
         
     def load_ip_whitelist(self, filename: str = 'ip_whitelist.txt') -> None:
         """Load IP whitelist from file."""
+        # Always allow localhost for both IPv4 and IPv6
+        self.ip_whitelist_v4.add(ipaddress.IPv4Network('127.0.0.1/32'))
+        self.ip_whitelist_v6.add(ipaddress.IPv6Network('::1/128'))
+        
         try:
             with open(filename, 'r') as f:
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith('#'):
-                        self.ip_whitelist.add(ipaddress.IPv4Network(line))
+                        try:
+                            # Try IPv4 first
+                            try:
+                                self.ip_whitelist_v4.add(ipaddress.IPv4Network(line))
+                            except ipaddress.AddressValueError:
+                                # If not IPv4, try IPv6
+                                self.ip_whitelist_v6.add(ipaddress.IPv6Network(line))
+                        except ValueError as e:
+                            logger.warning(f"Invalid IP in whitelist: {line}, Error: {e}")
         except FileNotFoundError:
-            logger.warning(f"IP whitelist file {filename} not found")
+            logger.info(f"IP whitelist file {filename} not found, using default localhost only")
             
     def check_ip(self, ip: str) -> bool:
         """Check if IP is whitelisted."""
-        if not self.ip_whitelist:
-            return True  # Allow all if no whitelist
-            
-        ip_addr = ipaddress.IPv4Address(ip)
-        return any(ip_addr in network for network in self.ip_whitelist)
+        try:
+            addr = ipaddress.ip_address(ip)
+            if isinstance(addr, ipaddress.IPv4Address):
+                return any(addr in network for network in self.ip_whitelist_v4)
+            else:
+                return any(addr in network for network in self.ip_whitelist_v6)
+        except ValueError:
+            logger.warning(f"Invalid IP address format: {ip}")
+            return False
         
     def generate_api_key(self,
                         permissions: Set[str],

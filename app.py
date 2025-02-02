@@ -24,9 +24,69 @@ st.set_page_config(
 # Initialize session state
 if 'bot' not in st.session_state:
     try:
-        st.session_state.bot = TradingBot()
+        from bot.trading_bot import TradingConfig
+        from bot.wallet.phantom_integration import PhantomWalletManager
+        from bot.security.win_credentials import WindowsCredManager
+        import base64
+        import os
+        import logging
+        
+        # Set up logging
+        logging.basicConfig(level=logging.DEBUG)
+        logger = logging.getLogger(__name__)
+        
+        logger.debug("Starting bot initialization...")
+        
+        # Initialize Phantom Wallet
+        wallet_manager = PhantomWalletManager()
+        logger.debug("Created wallet manager")
+        
+        # Generate new keypair
+        from solders.keypair import Keypair
+        
+        # Create a new Solana keypair
+        keypair = Keypair()
+        secret_bytes = keypair.secret()
+        logger.debug(f"Generated new Solana keypair with public key: {keypair.pubkey()}")
+            
+        # Initialize wallet with keypair secret
+        try:
+            asyncio.run(wallet_manager.initialize_wallet(secret_bytes))
+            logger.debug("Initialized wallet with keypair")
+        except Exception as e:
+            logger.error(f"Failed to initialize wallet: {str(e)}")
+            raise
+        
+        # Create trading config for Solana memecoin trading
+        config = TradingConfig(
+            base_currency='SOL',
+            quote_currency='USDC',
+            position_size=0.1,     # 10% of available balance
+            stop_loss=0.02,        # 2% stop loss
+            take_profit=0.05,      # 5% take profit
+            max_slippage=0.01,     # 1% max slippage
+            network='mainnet-beta', # Solana network
+            max_positions=5,        # Maximum number of concurrent positions
+            max_trades_per_day=10   # Maximum number of trades per day
+        )
+        logger.debug("Created trading config")
+        
+        try:
+            st.session_state.bot = TradingBot(wallet=wallet_manager, config=config)
+            logger.debug("Created trading bot instance")
+            
+            # Show wallet address
+            wallet_address = wallet_manager.keypair.pubkey()
+            st.sidebar.success(f"Connected to wallet: {wallet_address}")
+            logger.debug(f"Connected to wallet address: {wallet_address}")
+            
+        except Exception as e:
+            logger.error(f"Failed to create trading bot: {str(e)}")
+            raise
+            
     except Exception as e:
         st.error(f"Failed to initialize Trading Bot: {str(e)}")
+        logger.exception("Bot initialization failed")
         st.stop()
 
 def render_header():
@@ -50,73 +110,38 @@ def render_header():
             st.rerun()
 
 async def render_wallet_info():
-    """Render wallet information section"""
-    st.subheader("Wallet Information")
-    
+    """Render wallet information section."""
     try:
+        st.subheader("📊 Wallet Information")
+        
+        # Get wallet info
+        balance = await st.session_state.bot.get_balance()
+        
         col1, col2 = st.columns(2)
-        
         with col1:
-            sol_balance = await st.session_state.bot.wallet.get_balance()
-            st.metric(
-                "SOL Balance",
-                f"{sol_balance:.4f} SOL",
-                help="Your current SOL balance"
-            )
-        
+            st.metric("SOL Balance", f"{balance:.4f} SOL")
         with col2:
-            portfolio_value = await st.session_state.bot.get_portfolio_value()
-            st.metric(
-                "Portfolio Value",
-                f"{portfolio_value:.4f} SOL",
-                help="Total portfolio value in SOL"
-            )
-        
-        # Token accounts
-        st.subheader("Token Accounts")
-        token_accounts = await st.session_state.bot.wallet.get_token_accounts()
-        
-        if token_accounts:
-            df = pd.DataFrame(token_accounts)
-            df['amount'] = pd.to_numeric(df['amount'])
-            df['value'] = df['amount'] / (10 ** df['decimals'])
-            st.dataframe(
-                df[['mint', 'value', 'decimals']].rename(columns={
-                    'mint': 'Token',
-                    'value': 'Balance',
-                    'decimals': 'Decimals'
-                })
-            )
-        else:
-            st.info("No token accounts found")
+            st.metric("Connected Network", st.session_state.bot.config.network)
             
     except Exception as e:
         st.error(f"Error loading wallet info: {str(e)}")
 
 def render_trading_settings():
-    """Render trading settings section"""
-    st.subheader("Trading Settings")
+    """Render trading settings section."""
+    st.subheader("⚙️ Trading Settings")
     
-    col1, col2 = st.columns(2)
+    config = st.session_state.bot.config
     
-    with col1:
-        st.markdown("### Position Settings")
-        st.markdown(f"""
-        - Max Trades: **{st.session_state.bot.max_trades}**
-        - Position Size: **{st.session_state.bot.position_size * 100}%**
-        - Stop Loss: **{st.session_state.bot.stop_loss_percent}%**
-        - Take Profit: **{st.session_state.bot.take_profit_percent}%**
-        """)
-    
-    with col2:
-        st.markdown("### Technical Analysis")
-        st.markdown(f"""
-        - RSI Period: **{st.session_state.bot.rsi_period}**
-        - RSI Overbought: **{st.session_state.bot.rsi_overbought}**
-        - RSI Oversold: **{st.session_state.bot.rsi_oversold}**
-        - EMA Fast: **{st.session_state.bot.ema_fast}**
-        - EMA Slow: **{st.session_state.bot.ema_slow}**
-        """)
+    st.markdown(f"""
+    - Base Currency: **{config.base_currency}**
+    - Quote Currency: **{config.quote_currency}**
+    - Position Size: **{config.position_size * 100}%** of available balance
+    - Stop Loss: **{config.stop_loss * 100}%**
+    - Take Profit: **{config.take_profit * 100}%**
+    - Max Slippage: **{config.max_slippage * 100}%**
+    - Max Positions: **{config.max_positions}**
+    - Max Trades Per Day: **{config.max_trades_per_day}**
+    """)
 
 def render_active_trades():
     """Render active trades section"""

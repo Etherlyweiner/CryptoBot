@@ -37,7 +37,7 @@ class Config:
                 raise FileNotFoundError(f"Configuration file not found at {env_path}")
             
             # Load the .env file
-            load_dotenv(dotenv_path=env_path, override=True)
+            load_dotenv(dotenv_path=str(env_path), override=True, encoding='utf-8')
             
             # Network configuration
             self.NETWORK = os.getenv('NETWORK', 'mainnet-beta')  # mainnet-beta, testnet, or devnet

@@ -27,6 +27,18 @@ class MetricsCollector:
             ['symbol']
         )
         
+        self.position_value = Gauge(
+            'cryptobot_position_value',
+            'Current position value in quote currency',
+            ['symbol']
+        )
+        
+        self.pnl = Counter(
+            'cryptobot_pnl_total',
+            'Total profit and loss',
+            ['symbol']
+        )
+        
         self.total_exposure = Gauge(
             'cryptobot_total_exposure',
             'Total trading exposure'
