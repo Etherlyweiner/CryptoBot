@@ -132,7 +132,10 @@ Access the dashboard at `http://localhost:8501` after starting with Streamlit.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This is a private, proprietary software project intended for personal use only.
+All rights reserved. Unauthorized copying, modification, distribution, or use of this software is strictly prohibited.
+
+See the PRIVATE_LICENSE file for details.
 
 ## Disclaimer
 

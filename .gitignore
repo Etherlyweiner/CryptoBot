@@ -22,23 +22,63 @@ wheels/
 
 # Virtual Environment
 venv/
-ENV/
 env/
+ENV/
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+.project
+.pydevproject
+.settings/
 
-# Environment variables
-.env
-
-# Logs
+# Logs and databases
 *.log
+*.sqlite
+*.sqlite3
+*.db
+logs/
+*.log.*
+log/
 
-# Local development settings
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# Environment variables and secrets
+.env
+.env.*
+*.key
+secrets/
+api_keys.json
+credentials.json
+config.local.yml
+
+# Trading specific
+trading_history/
+backtesting_results/
+*.pkl
+*.h5
+*.csv
+market_data/
+historical_data/
+
+# Cache and temporary files
+.cache/
+.pytest_cache/
+*.tmp
+temp/
+.coverage
+htmlcov/
+coverage.xml
+.hypothesis/
+
+# Redis
+*.rdb
+dump.rdb
+
+# Prometheus
+prometheus_data/
+
+# Custom sensitive files
+ip_whitelist.txt
+private_config.yaml
+user_preferences.json
