@@ -1,323 +1,220 @@
-import ccxt
-import pandas as pd
-import numpy as np
-from config import *
-import time
-import schedule
-from datetime import datetime
-import ta
-from ml_strategy import MLStrategy
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
-import logging
-import functools
-import aiohttp
+"""
+CryptoBot for Solana trading using Phantom wallet
+"""
 
-# Set up logging
+import asyncio
+import logging
+from typing import Optional, Dict, Any, List
+import os
+from datetime import datetime
+import json
+from dotenv import load_dotenv
+from wallet import PhantomWallet, WalletError
+from trading_engine import TradingEngine, TradeConfig, TradeResult
+from risk_manager import RiskManager, RiskConfig
+
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('cryptobot.log'),
-        logging.StreamHandler()
-    ]
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger('CryptoBot')
 
-def async_retry(retries=3, delay=1):
-    """Decorator for async functions with retry logic"""
-    def decorator(func):
-        @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
-            last_exception = None
-            for i in range(retries):
-                try:
-                    return await func(*args, **kwargs)
-                except Exception as e:
-                    last_exception = e
-                    logger.warning(f"Attempt {i+1} failed: {str(e)}")
-                    if i < retries - 1:
-                        await asyncio.sleep(delay * (i + 1))
-            logger.error(f"All {retries} attempts failed: {str(last_exception)}")
-            raise last_exception
-        return wrapper
-    return decorator
+load_dotenv()
 
-class CryptoBot:
+class TradingBot:
     def __init__(self):
-        self.exchange = ccxt.binance({
-            'apiKey': API_KEY,
-            'secret': API_SECRET,
-            'enableRateLimit': True,
-            'options': {'defaultType': 'spot'}
-        })
-        self.positions = {}
-        self.ml_strategy = MLStrategy()
-        self.daily_trades = 0
-        self.last_trade_time = None
-        self._executor = ThreadPoolExecutor(max_workers=4)
-        self._session = None
-        self._data_cache = {}
-        self._last_cache_update = {}
-
-    async def get_session(self):
-        """Get or create aiohttp session"""
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
-        return self._session
-
-    def _clear_old_cache(self, max_age_seconds=300):
-        """Clear cache entries older than max_age_seconds"""
-        current_time = time.time()
-        for key in list(self._data_cache.keys()):
-            if current_time - self._last_cache_update.get(key, 0) > max_age_seconds:
-                del self._data_cache[key]
-                del self._last_cache_update[key]
-
-    @async_retry(retries=3)
-    async def fetch_ohlcv(self, symbol, timeframe='1h', limit=100):
-        """Fetch OHLCV data for a given symbol with caching"""
-        cache_key = f"{symbol}_{timeframe}_{limit}"
-        current_time = time.time()
+        """Initialize the trading bot with all components"""
+        self.wallet = PhantomWallet()
+        self.trade_config = TradeConfig(
+            slippage_bps=int(os.getenv('SLIPPAGE_BPS', '50')),
+            min_sol_balance=float(os.getenv('MIN_SOL_BALANCE', '0.05'))
+        )
+        self.risk_config = RiskConfig(
+            max_position_size=float(os.getenv('MAX_POSITION_SIZE', '0.2')),
+            daily_loss_limit=float(os.getenv('DAILY_LOSS_LIMIT', '0.05')),
+            max_drawdown=float(os.getenv('MAX_DRAWDOWN', '0.1'))
+        )
         
-        # Return cached data if fresh
-        if (cache_key in self._data_cache and 
-            current_time - self._last_cache_update.get(cache_key, 0) < 60):
-            return self._data_cache[cache_key]
-
+        self.trading_engine = None
+        self.risk_manager = None
+        
+        # Technical analysis parameters
+        self.rsi_period = int(os.getenv('RSI_PERIOD', '14'))
+        self.rsi_overbought = float(os.getenv('RSI_OVERBOUGHT', '70'))
+        self.rsi_oversold = float(os.getenv('RSI_OVERSOLD', '30'))
+        self.ema_fast = int(os.getenv('EMA_FAST', '12'))
+        self.ema_slow = int(os.getenv('EMA_SLOW', '26'))
+        self.macd_signal = int(os.getenv('MACD_SIGNAL', '9'))
+        
+        self.active_trades = {}
+        self.analysis_results = {}
+        
+    async def initialize(self) -> bool:
+        """Initialize all components of the trading bot"""
         try:
-            # Clear old cache entries
-            self._clear_old_cache()
+            logger.info("Initializing trading bot components...")
             
-            # Fetch new data
-            ohlcv = await asyncio.get_event_loop().run_in_executor(
-                self._executor,
-                lambda: self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-            )
+            # Connect wallet
+            if not await self.wallet.connect():
+                raise WalletError("Failed to connect wallet")
+                
+            # Initialize trading engine
+            self.trading_engine = TradingEngine(self.wallet, self.trade_config)
             
-            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-            df.set_index('timestamp', inplace=True)
+            # Initialize risk manager
+            self.risk_manager = RiskManager(self.wallet, self.risk_config)
+            await self.risk_manager.initialize()
             
-            # Cache the result
-            self._data_cache[cache_key] = df
-            self._last_cache_update[cache_key] = current_time
+            logger.info("Trading bot initialized successfully")
+            return True
             
-            return df
         except Exception as e:
-            logger.error(f"Error fetching data for {symbol}: {str(e)}")
-            return None
-
-    def calculate_signals(self, df):
-        """Calculate trading signals using technical indicators"""
-        if df is None or df.empty:
-            return None
-            
-        try:
-            # Calculate indicators in parallel using ThreadPoolExecutor
-            with ThreadPoolExecutor() as executor:
-                futures = [
-                    executor.submit(lambda: ta.momentum.rsi(df['close'], window=14)),
-                    executor.submit(lambda: ta.trend.MACD(df['close'])),
-                    executor.submit(lambda: ta.volatility.BollingerBands(df['close']))
-                ]
-                
-                # Get results
-                rsi = futures[0].result()
-                macd = futures[1].result()
-                bollinger = futures[2].result()
-                
-                # Assign results to dataframe
-                df['RSI'] = rsi
-                df['MACD'] = macd.macd()
-                df['MACD_signal'] = macd.macd_signal()
-                df['BB_upper'] = bollinger.bollinger_hband()
-                df['BB_lower'] = bollinger.bollinger_lband()
-                
-            return df
-        except Exception as e:
-            logger.error(f"Error calculating signals: {str(e)}")
-            return None
-
-    def calculate_position_size(self, current_price):
-        """Calculate the quantity based on TARGET_POSITION_SIZE"""
-        try:
-            return TARGET_POSITION_SIZE / current_price
-        except Exception as e:
-            logger.error(f"Error calculating position size: {str(e)}")
-            return None
-
-    @async_retry(retries=3)
-    async def update_ml_model(self):
-        """Update the ML model with new data and learn from YouTube"""
-        logger.info("Updating ML model...")
-        try:
-            for pair in TRADING_PAIRS:
-                df = await self.fetch_ohlcv(pair, TIMEFRAME, limit=500)
-                if df is not None:
-                    df = self.calculate_signals(df)
-                    await self.ml_strategy.train(df)
-            
-            # Learn from YouTube
-            await self.ml_strategy.learn_from_youtube()
-            logger.info("ML model update completed")
-        except Exception as e:
-            logger.error(f"Error updating ML model: {str(e)}")
-
-    def generate_trading_decision(self, df):
-        """Generate trading decision based on ML strategy"""
-        try:
-            if self.daily_trades >= MAX_TRADES_PER_DAY:
-                return None
-                
-            # Get ML-based trading signal
-            signal = self.ml_strategy.get_trading_signals(df)
-            
-            # Apply additional risk management
-            if signal == 'buy':
-                try:
-                    balance = self.exchange.fetch_balance()
-                    usdt_balance = balance.get('USDT', {}).get('free', 0)
-                    if usdt_balance < TARGET_POSITION_SIZE:
-                        logger.warning(f"Insufficient USDT balance: {usdt_balance}")
-                        return None
-                except Exception as e:
-                    logger.error(f"Error checking balance: {str(e)}")
-                    return None
-                    
-            return signal
-        except Exception as e:
-            logger.error(f"Error generating trading decision: {str(e)}")
-            return None
-
-    @async_retry(retries=3)
-    async def execute_trade(self, symbol, side, current_price):
-        """Execute a trade with position sizing and error handling"""
-        try:
-            quantity = self.calculate_position_size(current_price)
-            if quantity is None:
-                return None
-                
-            order = await asyncio.get_event_loop().run_in_executor(
-                self._executor,
-                lambda: self.exchange.create_order(
-                    symbol=symbol,
-                    type='market',
-                    side=side,
-                    amount=quantity
-                )
-            )
-            
-            # Update trading metrics
-            self.daily_trades += 1
-            self.last_trade_time = datetime.now()
-            
-            logger.info(f"Executed {side} order for {symbol}: {order}")
-            
-            # Place stop loss and take profit orders
-            if side == 'buy':
-                stop_loss_price = current_price * (1 - STOP_LOSS_PERCENTAGE)
-                take_profit_price = current_price * (1 + TAKE_PROFIT_PERCENTAGE)
-                
-                # Place stop loss order
-                await asyncio.get_event_loop().run_in_executor(
-                    self._executor,
-                    lambda: self.exchange.create_order(
-                        symbol=symbol,
-                        type='stop_loss',
-                        side='sell',
-                        amount=quantity,
-                        price=stop_loss_price
-                    )
-                )
-                
-                # Place take profit order
-                await asyncio.get_event_loop().run_in_executor(
-                    self._executor,
-                    lambda: self.exchange.create_order(
-                        symbol=symbol,
-                        type='take_profit',
-                        side='sell',
-                        amount=quantity,
-                        price=take_profit_price
-                    )
-                )
-            
-            return order
-        except Exception as e:
-            logger.error(f"Error executing trade: {str(e)}")
-            return None
-
-    async def run_trading_strategy(self):
-        """Run the trading strategy for all pairs"""
-        try:
-            # Reset daily trades counter at the start of each day
-            current_time = datetime.now()
-            if self.last_trade_time and self.last_trade_time.date() != current_time.date():
-                self.daily_trades = 0
-            
-            for pair in TRADING_PAIRS:
-                logger.info(f"\nAnalyzing {pair} at {current_time}")
-                
-                # Fetch and analyze data
-                df = await self.fetch_ohlcv(pair, TIMEFRAME)
-                if df is None:
-                    continue
-                    
-                df = self.calculate_signals(df)
-                if df is None:
-                    continue
-                    
-                decision = self.generate_trading_decision(df)
-                
-                current_price = df.iloc[-1]['close']
-                
-                # Execute trades based on signals
-                if decision == 'buy' and pair not in self.positions:
-                    order = await self.execute_trade(pair, 'buy', current_price)
-                    if order:
-                        self.positions[pair] = {
-                            'entry_price': float(order['price']),
-                            'quantity': float(order['amount'])
-                        }
-                        
-                elif decision == 'sell' and pair in self.positions:
-                    order = await self.execute_trade(pair, 'sell', current_price)
-                    if order:
-                        del self.positions[pair]
-        except Exception as e:
-            logger.error(f"Error in trading strategy: {str(e)}")
-
+            logger.error(f"Failed to initialize trading bot: {str(e)}")
+            return False
+        
     async def start(self):
-        """Start the trading bot with ML capabilities"""
-        logger.info("Starting CryptoBot with ML Strategy...")
-        
+        """Start the trading bot"""
         try:
-            # Schedule model updates
-            schedule.every(MODEL_UPDATE_INTERVAL).hours.do(
-                lambda: asyncio.create_task(self.update_ml_model())
-            )
-            
-            # Schedule trading strategy
-            schedule.every(15).minutes.do(
-                lambda: asyncio.create_task(self.run_trading_strategy())
-            )
+            if not await self.initialize():
+                raise Exception("Failed to initialize trading bot")
+                
+            logger.info("Starting trading bot...")
             
             while True:
                 try:
-                    schedule.run_pending()
+                    # Update market data
+                    await self.update_market_data()
+                    
+                    # Check for trading signals
+                    await self.check_signals()
+                    
+                    # Manage existing positions
+                    await self.manage_trades()
+                    
+                    # Log portfolio stats
+                    stats = await self.risk_manager.get_portfolio_stats()
+                    logger.info(f"Portfolio stats: {json.dumps(stats, indent=2)}")
+                    
+                    # Wait before next iteration
                     await asyncio.sleep(60)
+                    
                 except Exception as e:
                     logger.error(f"Error in main loop: {str(e)}")
                     await asyncio.sleep(60)
+                    
         except Exception as e:
-            logger.error(f"Critical error in bot: {str(e)}")
+            logger.error(f"Fatal error in trading bot: {str(e)}")
+            raise
         finally:
-            # Clean up resources
-            if self._session and not self._session.closed:
-                await self._session.close()
-            self._executor.shutdown(wait=True)
-
+            await self.cleanup()
+            
+    async def update_market_data(self):
+        """Update market data for analysis"""
+        try:
+            tokens = await self.get_tradeable_tokens()
+            for token in tokens[:10]:  # Only analyze top 10 tokens for now
+                price_data = await self.get_price_history(token['address'])
+                if price_data is not None:
+                    self.analysis_results[token['address']] = self.analyze_token(token['address'], price_data)
+        except Exception as e:
+            logger.error(f"Error updating market data: {str(e)}")
+            
+    async def check_signals(self):
+        """Check for trading signals and execute trades if conditions are met"""
+        try:
+            for token_address, analysis in self.analysis_results.items():
+                # Skip if we already have a position
+                if token_address in self.active_trades:
+                    continue
+                    
+                # Check if we can trade
+                can_trade, reason = await self.risk_manager.can_trade(token_address, 0)  # Amount will be calculated later
+                if not can_trade:
+                    logger.info(f"Trade not allowed for {token_address}: {reason}")
+                    continue
+                    
+                # Get trading signal
+                signal = self.get_trading_signal(analysis)
+                if signal == 0:  # No signal
+                    continue
+                    
+                # Calculate position size
+                position_size = await self.risk_manager.calculate_position_size(token_address, analysis['price'])
+                if not position_size:
+                    continue
+                    
+                # Execute trade
+                if signal > 0:  # Buy signal
+                    result = await self.trading_engine.execute_trade(
+                        "So11111111111111111111111111111111111111112",  # SOL
+                        token_address,
+                        position_size
+                    )
+                else:  # Sell signal
+                    result = await self.trading_engine.execute_trade(
+                        token_address,
+                        "So11111111111111111111111111111111111111112",  # SOL
+                        position_size
+                    )
+                    
+                if result.success:
+                    # Update position tracking
+                    await self.risk_manager.update_position(token_address, {
+                        'size': position_size,
+                        'price': result.price,
+                        'timestamp': result.timestamp
+                    })
+                    logger.info(f"Successfully executed trade for {token_address}")
+                else:
+                    logger.error(f"Trade failed for {token_address}: {result.error}")
+                    
+        except Exception as e:
+            logger.error(f"Error checking trading signals: {str(e)}")
+            
+    def get_trading_signal(self, analysis: Dict) -> int:
+        """Get trading signal from analysis results
+        Returns:
+            1 for buy signal
+            -1 for sell signal
+            0 for no signal
+        """
+        try:
+            if not analysis:
+                return 0
+                
+            # Example simple strategy using RSI and MACD
+            rsi = analysis.get('rsi')
+            macd = analysis.get('macd')
+            macd_signal = analysis.get('macd_signal')
+            
+            if rsi and macd and macd_signal:
+                if rsi < self.rsi_oversold and macd > macd_signal:
+                    return 1  # Buy signal
+                elif rsi > self.rsi_overbought and macd < macd_signal:
+                    return -1  # Sell signal
+                    
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Error getting trading signal: {str(e)}")
+            return 0
+            
+    async def cleanup(self):
+        """Clean up resources"""
+        try:
+            if self.trading_engine:
+                await self.trading_engine.close()
+            if self.wallet:
+                await self.wallet.close()
+        except Exception as e:
+            logger.error(f"Error during cleanup: {str(e)}")
+            
 if __name__ == "__main__":
-    bot = CryptoBot()
-    asyncio.run(bot.start())
+    bot = TradingBot()
+    try:
+        asyncio.run(bot.start())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+    except Exception as e:
+        logger.error(f"Fatal error: {str(e)}", exc_info=True)
