@@ -1,0 +1,122 @@
+{
+    "alert_thresholds": {
+        "error_rate": 0.05,
+        "response_time": 1.0,
+        "memory_usage": 0.85,
+        "cpu_usage": 0.80,
+        "disk_usage": 0.90
+    },
+    "email_settings": {
+        "smtp_server": "REPLACE_WITH_SMTP_SERVER",
+        "smtp_port": 587,
+        "sender_email": "REPLACE_WITH_EMAIL",
+        "sender_password": "REPLACE_WITH_PASSWORD"
+    },
+    "slack_webhook": "REPLACE_WITH_WEBHOOK_URL",
+    "telegram_token": "REPLACE_WITH_BOT_TOKEN",
+    "telegram_chat_id": "REPLACE_WITH_CHAT_ID",
+    "log_levels": {
+        "trade_execution": "INFO",
+        "market_data": "INFO",
+        "authentication": "WARNING",
+        "system": "WARNING",
+        "ml_predictions": "INFO",
+        "cache": "INFO",
+        "security": "WARNING"
+    },
+    "metrics_collection": {
+        "trade_metrics": {
+            "enabled": true,
+            "interval": 60,
+            "retention_days": 90
+        },
+        "system_metrics": {
+            "enabled": true,
+            "interval": 30,
+            "retention_days": 30
+        },
+        "ml_metrics": {
+            "enabled": true,
+            "interval": 300,
+            "retention_days": 180
+        },
+        "cache_metrics": {
+            "enabled": true,
+            "interval": 60,
+            "retention_days": 30
+        }
+    },
+    "alert_rules": {
+        "high_error_rate": {
+            "threshold": 0.1,
+            "window": 300,
+            "severity": "critical",
+            "channels": ["email", "slack"]
+        },
+        "slow_response": {
+            "threshold": 2.0,
+            "window": 60,
+            "severity": "warning",
+            "channels": ["slack"]
+        },
+        "memory_usage": {
+            "threshold": 0.9,
+            "window": 60,
+            "severity": "warning",
+            "channels": ["slack"]
+        },
+        "failed_trades": {
+            "threshold": 3,
+            "window": 300,
+            "severity": "error",
+            "channels": ["email", "slack", "telegram"]
+        },
+        "high_slippage": {
+            "threshold": 5.0,
+            "window": 300,
+            "severity": "warning",
+            "channels": ["slack"]
+        },
+        "low_liquidity": {
+            "threshold": 1000,
+            "window": 60,
+            "severity": "warning",
+            "channels": ["slack"]
+        },
+        "ml_accuracy_drop": {
+            "threshold": 0.1,
+            "window": 3600,
+            "severity": "warning",
+            "channels": ["slack"]
+        }
+    },
+    "notification_channels": {
+        "email": {
+            "enabled": true,
+            "rate_limit": 60,
+            "batch_interval": 300
+        },
+        "slack": {
+            "enabled": true,
+            "rate_limit": 30,
+            "batch_interval": 60
+        },
+        "telegram": {
+            "enabled": true,
+            "rate_limit": 30,
+            "batch_interval": 60
+        }
+    },
+    "dashboard": {
+        "update_interval": 5,
+        "default_timeframe": "1h",
+        "max_datapoints": 1000,
+        "widgets": [
+            "trade_performance",
+            "system_health",
+            "ml_metrics",
+            "alerts",
+            "cache_stats"
+        ]
+    }
+}

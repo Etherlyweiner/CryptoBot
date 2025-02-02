@@ -5,12 +5,13 @@ import logging
 from typing import Dict, List, Optional
 from decimal import Decimal
 import json
-from solana.rpc.async_api import AsyncClient
-from solana.transaction import Transaction
-from solana.keypair import Keypair
-from solders.keypair import Keypair as SoldersKeypair
 from solders.pubkey import Pubkey
 from solders.system_program import TransferParams, transfer
+from solders.keypair import Keypair
+from spl_governance import spl_gov, spl_gov_secp256k1
+from spl_governance.authorization import Authorize
+from spl_governance.transaction import Transaction
+from solana.rpc.async_api import AsyncClient
 from solana.rpc.commitment import Confirmed
 from anchorpy import Provider, Wallet
 import base58

@@ -1,0 +1,33 @@
+# Server Configuration
+SERVER_HOST=localhost
+SERVER_PORT=8080
+METRICS_PORT=9090
+
+# Security
+JWT_SECRET=your_secure_jwt_secret
+SSL_CERT_PATH=/path/to/cert.pem
+SSL_KEY_PATH=/path/to/key.pem
+
+# Redis Configuration
+REDIS_URL=redis://localhost:6379
+
+# Alert Configuration
+SMTP_SERVER=smtp.example.com
+SMTP_PORT=587
+ALERT_EMAIL=your_email@example.com
+ALERT_EMAIL_PASSWORD=your_email_password
+SLACK_WEBHOOK=your_slack_webhook_url
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+TELEGRAM_CHAT_ID=your_telegram_chat_id
+
+# Solana Configuration
+SOLANA_RPC_URL=your_solana_rpc_url
+WALLET_PRIVATE_KEY=your_wallet_private_key
+
+# Machine Learning
+MODEL_DIR=models
+CACHE_DIR=cache
+
+# Logging
+LOG_LEVEL=INFO
+LOG_FILE=cryptobot.log
