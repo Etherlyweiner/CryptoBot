@@ -172,6 +172,10 @@ class MarketMonitor:
                 'opportunity_score': opportunity_score
             }
 
+        except Exception as e:
+            logger.error(f"Error analyzing token data: {str(e)}")
+            return {}
+
     def generate_alerts(self, token_data: Dict[str, Any], analysis: Dict[str, float]):
         """Generate alerts based on token analysis"""
         alerts = []
