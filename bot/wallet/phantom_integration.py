@@ -15,6 +15,7 @@ from typing import Optional, Dict, Any, Tuple
 import base58
 from solana.rpc.types import TxOpts
 from solders.rpc.errors import InvalidParamsMessage
+from solana.rpc.commitment import Confirmed
 
 logger = logging.getLogger(__name__)
 
@@ -49,41 +50,68 @@ class PhantomWalletManager:
     def initialize_with_address(self, address: str) -> Tuple[bool, str]:
         """Initialize wallet with a public address."""
         try:
-            from solders.pubkey import Pubkey
             import base58
-            from solana.rpc.api import Client
+            import requests
+            import json
             
-            # Convert address string to Pubkey
+            logger.debug(f"Initializing wallet with address: {address}")
+            
+            # Store the address string
+            self._address = address
+            
+            # Test connection by checking balance using direct RPC call
             try:
-                decoded = base58.b58decode(address)
-                self._pubkey = Pubkey(decoded)
-                logger.info(f"Converted address to Pubkey: {self._pubkey}")
-            except Exception as e:
-                logger.error(f"Failed to convert address to Pubkey: {str(e)}")
-                return False, f"Invalid wallet address format: {str(e)}"
-
-            # Test connection by checking balance
-            try:
-                # Create a new client instance for the balance check
-                rpc_client = Client(self.SOLANA_RPC)
-                # Convert Pubkey to string for the RPC call
-                pubkey_str = str(self._pubkey)
-                balance_response = rpc_client.get_balance(pubkey_str)
+                headers = {"Content-Type": "application/json"}
+                payload = {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "getBalance",
+                    "params": [
+                        address,
+                        {"commitment": "confirmed"}
+                    ]
+                }
                 
-                if hasattr(balance_response, 'value'):
-                    logger.info(f"Initial balance check successful: {balance_response.value} lamports")
-                    self._is_connected = True
-                    return True, "Wallet initialized successfully"
+                logger.debug(f"Sending RPC request to {self.SOLANA_RPC}")
+                response = requests.post(self.SOLANA_RPC, headers=headers, json=payload)
+                logger.debug(f"Raw response: {response.text}")
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if "result" in result and "value" in result["result"]:
+                        balance = result["result"]["value"]
+                        logger.info(f"Initial balance check successful: {balance} lamports")
+                        
+                        # Now that we confirmed the address works, create the Pubkey
+                        from solders.pubkey import Pubkey
+                        try:
+                            decoded = base58.b58decode(address)
+                            self._pubkey = Pubkey(decoded)
+                            logger.debug(f"Successfully created Pubkey object: {self._pubkey}")
+                        except Exception as e:
+                            logger.error(f"Failed to create Pubkey object: {str(e)}")
+                            # Continue anyway since we confirmed the address works
+                            
+                        self._is_connected = True
+                        return True, "Wallet initialized successfully"
+                    else:
+                        logger.error(f"Invalid response format: {result}")
+                        return False, "Failed to get balance: Invalid response format"
                 else:
-                    logger.error("Balance response was None or invalid")
-                    return False, "Failed to get balance: Invalid response"
+                    logger.error(f"RPC request failed with status {response.status_code}")
+                    return False, f"RPC request failed: {response.status_code}"
                     
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Network error during balance check: {str(e)}")
+                return False, f"Network error: {str(e)}"
             except Exception as e:
                 logger.error(f"Balance check failed: {str(e)}")
+                logger.error(f"Full traceback: {traceback.format_exc()}")
                 return False, f"Balance check failed: {str(e)}"
                 
         except Exception as e:
             logger.error(f"Wallet initialization failed: {str(e)}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             return False, f"Wallet initialization failed: {str(e)}"
 
     @property
@@ -167,20 +195,44 @@ class PhantomWalletManager:
             # Try Solscan first for more detailed info
             account_info = self._get_solscan_account_info(address)
             if account_info and 'lamports' in account_info:
-                return float(account_info['lamports']) / 10**9
+                balance = float(account_info['lamports']) / 10**9
+                logger.debug(f"Got balance from Solscan: {balance} SOL")
+                return balance
             
-            # Fallback to RPC
-            balance_resp = self._safe_rpc_call(self.client.get_balance, address)
-            if balance_resp is None:
-                raise RuntimeError("Failed to get balance")
-            if not isinstance(balance_resp, GetBalanceResp):
-                raise RuntimeError("Invalid response type from get_balance")
+            # Fallback to direct RPC call
+            try:
+                headers = {"Content-Type": "application/json"}
+                payload = {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "getBalance",
+                    "params": [
+                        address,
+                        {"commitment": "confirmed"}
+                    ]
+                }
                 
-            return balance_resp.value / 10**9  # Convert lamports to SOL
+                logger.debug(f"Sending RPC balance request to {self.SOLANA_RPC}")
+                response = requests.post(self.SOLANA_RPC, headers=headers, json=payload)
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if "result" in result and "value" in result["result"]:
+                        balance = float(result["result"]["value"]) / 10**9
+                        logger.debug(f"Got balance from RPC: {balance} SOL")
+                        return balance
+                    
+                logger.error(f"Invalid RPC response format: {result}")
+                raise RuntimeError("Failed to get balance: Invalid RPC response")
+                
+            except Exception as e:
+                logger.error(f"RPC balance check failed: {str(e)}")
+                raise RuntimeError(f"Failed to get balance via RPC: {str(e)}")
+                
         except Exception as e:
             logger.error(f"Balance check failed: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            raise RuntimeError(f"Failed to get balance: {str(e)}")
 
     def get_token_balances(self) -> Dict[str, float]:
         """Get all token balances for the wallet."""
