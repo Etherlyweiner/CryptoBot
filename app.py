@@ -55,14 +55,29 @@ if 'bot' not in st.session_state:
         
         logger.debug("Wallet initialized successfully")
         
+        # Test wallet connection
+        if not wallet_manager.is_connected():
+            error_msg = "Wallet is not connected"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+            
+        # Check wallet balance
+        balance = wallet_manager.get_balance()
+        if balance <= 0:
+            error_msg = f"Insufficient wallet balance: {balance} SOL"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+            
+        logger.info(f"Wallet balance: {balance} SOL")
+        
         # Create trading config for Solana memecoin trading
         config = TradingConfig(
             base_currency='SOL',
             quote_currency='USDC',
-            position_size=0.1,     # 10% of available balance
-            stop_loss=0.02,        # 2% stop loss
-            take_profit=0.05,      # 5% take profit
-            max_slippage=0.01,     # 1% max slippage
+            position_size=0.2,      # 20% of available balance
+            stop_loss=0.05,         # 5% stop loss
+            take_profit=0.15,       # 15% take profit
+            max_slippage=0.05,      # 5% max slippage
             network='mainnet-beta', # Solana network
             max_positions=5,        # Maximum number of concurrent positions
             max_trades_per_day=10   # Maximum number of trades per day
@@ -270,24 +285,48 @@ def initialize_bot():
         
         logger.debug("Wallet initialized successfully")
         
+        # Test wallet connection
+        if not wallet_manager.is_connected():
+            error_msg = "Wallet is not connected"
+            logger.error(error_msg)
+            return False, error_msg
+            
+        # Check wallet balance
+        balance = wallet_manager.get_balance()
+        if balance <= 0:
+            error_msg = f"Insufficient wallet balance: {balance} SOL"
+            logger.error(error_msg)
+            return False, error_msg
+            
+        logger.info(f"Wallet balance: {balance} SOL")
+        
         # Create trading config
         config = TradingConfig(
             base_currency='SOL',
             quote_currency='USDC',
-            position_size=0.1,     # 10% of available balance
-            stop_loss=0.02,        # 2% stop loss
-            take_profit=0.05,      # 5% take profit
-            max_slippage=0.01,     # 1% max slippage
-            network='mainnet-beta', # Solana network
-            max_positions=5,        # Maximum number of concurrent positions
-            max_trades_per_day=10   # Maximum number of trades per day
+            position_size=0.2,      # 20% of available balance
+            stop_loss=0.05,         # 5% stop loss
+            take_profit=0.15,       # 15% take profit
+            max_slippage=0.05,      # 5% max slippage
+            network='mainnet-beta',  # Solana network
+            max_positions=5,         # Maximum number of concurrent positions
+            max_trades_per_day=10    # Maximum number of trades per day
         )
         logger.debug("Created trading config")
         
         # Initialize trading bot
         st.session_state.bot = TradingBot(wallet=wallet_manager, config=config)
         logger.debug("Created trading bot instance")
-        return True, "Bot initialized successfully"
+        
+        # Start the bot
+        success = st.session_state.bot.start()
+        if not success:
+            error_msg = "Failed to start trading bot"
+            logger.error(error_msg)
+            return False, error_msg
+            
+        logger.info("Trading bot started successfully")
+        return True, "Bot initialized and started successfully"
         
     except Exception as e:
         error_msg = f"Failed to initialize Trading Bot: {str(e)}"

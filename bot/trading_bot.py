@@ -8,6 +8,7 @@ import json
 from datetime import datetime
 from dataclasses import dataclass, field
 import aiohttp
+import traceback
 
 from bot.wallet.phantom_integration import PhantomWalletManager
 from cache_manager import cache_manager, market_cache
@@ -104,26 +105,56 @@ class TradingBot:
             'trades_today': self.trades_today
         }
     
-    def start(self):
+    async def _check_connections(self) -> bool:
+        """Check all necessary connections."""
+        try:
+            # Check wallet connection
+            if not self.wallet.is_connected():
+                logger.error("Wallet is not connected")
+                return False
+
+            # Check wallet balance
+            balance = self.wallet.get_balance()
+            if balance <= 0:
+                logger.error(f"Insufficient wallet balance: {balance} SOL")
+                return False
+
+            # Test market data connection
+            test_symbol = "BONK"  # Use BONK as test symbol
+            market_data = await self._fetch_market_data(test_symbol)
+            if not market_data:
+                logger.error("Failed to fetch market data")
+                return False
+
+            logger.info("All connections checked and working")
+            return True
+
+        except Exception as e:
+            logger.error(f"Connection check failed: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False
+
+    async def start(self):
         """Start the trading bot."""
-        if not self.is_running:
+        try:
+            logger.info("Starting trading bot...")
+            
+            # Check connections before starting
+            if not await self._check_connections():
+                logger.error("Failed to start trading bot - connection check failed")
+                return False
+
             self.is_running = True
-            try:
-                # Get or create event loop
-                try:
-                    loop = asyncio.get_event_loop()
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                
-                # Create and run the trading task
-                self._trading_task = loop.create_task(self._trading_loop())
-                logger.info("Trading bot started")
-            except Exception as e:
-                self.is_running = False
-                logger.error(f"Failed to start trading bot: {str(e)}")
-                raise RuntimeError(f"Failed to start trading bot: {str(e)}")
-    
+            self._trading_task = asyncio.create_task(self._trading_loop())
+            logger.info("Trading bot started successfully")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to start trading bot: {str(e)}")
+            logger.error(traceback.format_exc())
+            self.is_running = False
+            return False
+
     def stop(self):
         """Stop the trading bot."""
         if self.is_running:
@@ -185,45 +216,100 @@ class TradingBot:
             logger.error(f"Error placing order: {str(e)}")
             return False
 
+    def _get_token_mint(self, symbol: str) -> str:
+        """Get token mint address for a symbol."""
+        # Common Solana token addresses
+        token_addresses = {
+            'BONK': 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
+            'SAMO': '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
+            'BOME': '5jFnsfx36DyGk8uVGrbXnVUMTsBkPXGpx6e69BiGFzko',
+            'MYRO': 'HhJpBhRRn4g56VsyLuT8DL5Bv31HkXqsrahTTUCZeZg4',
+            'WIF': 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm'
+        }
+        return token_addresses.get(symbol)
+
     async def _fetch_market_data(self, symbol: str) -> Optional[Dict]:
         """Fetch market data for a symbol."""
         try:
+            # Get token mint address
+            token_mint = self._get_token_mint(symbol)
+            if not token_mint:
+                logger.error(f"No mint address found for {symbol}")
+                return None
+
             # Use Jupiter API to get market data
-            url = f"https://price.jup.ag/v4/price?ids={symbol}"
+            url = f"https://price.jup.ag/v4/price?ids={token_mint}"
+            logger.debug(f"Fetching market data for {symbol} from {url}")
+            
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
                     if response.status == 200:
                         data = await response.json()
-                        if data and "data" in data and symbol in data["data"]:
-                            return data["data"][symbol]
+                        logger.debug(f"Received data for {symbol}: {json.dumps(data, indent=2)}")
+                        if data and "data" in data and token_mint in data["data"]:
+                            market_data = data["data"][token_mint]
+                            market_data["symbol"] = symbol  # Add symbol for reference
+                            logger.info(f"Market data for {symbol}: Price=${market_data.get('price', 'N/A')}, 24h Change: {market_data.get('price_change_24h', 'N/A')}%")
+                            return market_data
+                    else:
+                        logger.error(f"Failed to fetch data for {symbol}. Status: {response.status}")
             return None
         except Exception as e:
             logger.error(f"Error fetching market data for {symbol}: {str(e)}")
+            logger.error(traceback.format_exc())
             return None
 
     async def _analyze_token(self, symbol: str) -> Optional[Trade]:
         """Analyze a token for trading opportunities."""
         try:
+            logger.debug(f"Analyzing token: {symbol}")
             market_data = await self._fetch_market_data(symbol)
+            
             if not market_data:
+                logger.warning(f"No market data available for {symbol}")
                 return None
 
             current_price = float(market_data.get("price", 0))
             if current_price <= 0:
+                logger.warning(f"Invalid price for {symbol}: {current_price}")
                 return None
 
             # Get recent price history
             price_change = float(market_data.get("price_change_24h", 0))
             volume = float(market_data.get("volume_24h", 0))
+            
+            logger.info(f"Analysis for {symbol}:")
+            logger.info(f"  - Current Price: ${current_price:.6f}")
+            logger.info(f"  - 24h Price Change: {price_change:.2f}%")
+            logger.info(f"  - 24h Volume: {volume:.2f} SOL")
 
-            # Simple trading strategy (customize as needed)
-            # Buy if:
-            # 1. Price has dropped more than 5% in 24h
-            # 2. 24h volume is significant (> 1000 SOL)
-            if price_change < -5 and volume > 1000:
+            # Get wallet balance
+            wallet_balance = self.wallet.get_balance()
+            if wallet_balance <= 0:
+                logger.warning(f"Insufficient wallet balance: {wallet_balance} SOL")
+                return None
+            
+            logger.info(f"Wallet balance: {wallet_balance:.4f} SOL")
+
+            # Trading strategy conditions
+            strategy_conditions = {
+                "price_drop": price_change < -5,
+                "volume_sufficient": volume > 1000,
+                "balance_sufficient": wallet_balance > 0.1  # Minimum 0.1 SOL required
+            }
+            
+            logger.info(f"Strategy conditions for {symbol}:")
+            logger.info(f"  - Price Drop > 5%: {strategy_conditions['price_drop']} ({price_change:.2f}%)")
+            logger.info(f"  - Volume > 1000 SOL: {strategy_conditions['volume_sufficient']} ({volume:.2f} SOL)")
+            logger.info(f"  - Balance > 0.1 SOL: {strategy_conditions['balance_sufficient']} ({wallet_balance:.4f} SOL)")
+
+            if all(strategy_conditions.values()):
                 # Calculate position size based on wallet balance
-                wallet_balance = self.get_balance()
                 position_size = wallet_balance * self.config.position_size
+                
+                logger.info(f"Creating trade for {symbol}:")
+                logger.info(f"  - Wallet Balance: {wallet_balance:.4f} SOL")
+                logger.info(f"  - Position Size: {position_size:.4f} SOL")
 
                 # Create trade object
                 trade = Trade(
@@ -234,18 +320,28 @@ class TradingBot:
                     stop_loss=current_price * (1 - self.config.stop_loss),
                     take_profit=current_price * (1 + self.config.take_profit)
                 )
-                logger.info(f"Found trading opportunity: {trade}")
+                
+                logger.info(f"Trade details:")
+                logger.info(f"  - Quantity: {trade.quantity:.2f}")
+                logger.info(f"  - Entry Price: ${trade.entry_price:.6f}")
+                logger.info(f"  - Stop Loss: ${trade.stop_loss:.6f}")
+                logger.info(f"  - Take Profit: ${trade.take_profit:.6f}")
+                
                 return trade
-
-            return None
+            else:
+                conditions_not_met = [k for k, v in strategy_conditions.items() if not v]
+                logger.debug(f"No trading opportunity for {symbol} - conditions not met: {conditions_not_met}")
+                return None
 
         except Exception as e:
             logger.error(f"Error analyzing token {symbol}: {str(e)}")
+            logger.error(traceback.format_exc())
             return None
 
     async def _find_trading_opportunities(self) -> List[Trade]:
         """Find new trading opportunities."""
         try:
+            logger.info("Starting trading opportunity search...")
             opportunities = []
             
             # List of tokens to monitor (customize as needed)
@@ -253,14 +349,21 @@ class TradingBot:
                 "BONK", "SAMO", "BOME", "MYRO", "WIF"  # Popular Solana memecoins
             ]
             
+            logger.info(f"Monitoring tokens: {', '.join(tokens_to_monitor)}")
+            
             # Analyze each token
             for token in tokens_to_monitor:
                 try:
+                    logger.debug(f"Analyzing {token}...")
                     trade = await self._analyze_token(token)
                     if trade:
+                        logger.info(f"Found opportunity for {token}")
                         opportunities.append(trade)
+                    else:
+                        logger.debug(f"No opportunity found for {token}")
                 except Exception as e:
                     logger.error(f"Error analyzing {token}: {str(e)}")
+                    logger.error(traceback.format_exc())
                     continue
                 
                 # Add small delay between API calls
@@ -268,10 +371,13 @@ class TradingBot:
             
             if opportunities:
                 logger.info(f"Found {len(opportunities)} trading opportunities")
+            else:
+                logger.info("No trading opportunities found in this iteration")
             return opportunities
 
         except Exception as e:
             logger.error(f"Error finding trading opportunities: {str(e)}")
+            logger.error(traceback.format_exc())
             return []
 
     async def _update_trade(self, trade: Trade):
@@ -280,34 +386,55 @@ class TradingBot:
             if trade.status != "open":
                 return
 
+            logger.debug(f"Updating trade for {trade.symbol}")
+            
             # Get current price
             market_data = await self._fetch_market_data(trade.symbol)
             if not market_data:
+                logger.warning(f"Could not get market data for {trade.symbol}")
                 return
 
             current_price = float(market_data.get("price", 0))
             if current_price <= 0:
+                logger.warning(f"Invalid current price for {trade.symbol}: {current_price}")
                 return
+
+            logger.info(f"Trade status for {trade.symbol}:")
+            logger.info(f"  - Entry Price: ${trade.entry_price}")
+            logger.info(f"  - Current Price: ${current_price}")
+            logger.info(f"  - Stop Loss: ${trade.stop_loss}")
+            logger.info(f"  - Take Profit: ${trade.take_profit}")
 
             # Check stop loss
             if current_price <= trade.stop_loss:
-                logger.info(f"Stop loss triggered for {trade.symbol} at {current_price}")
+                logger.info(f"Stop loss triggered for {trade.symbol} at ${current_price}")
                 trade.status = "closed"
                 return
 
             # Check take profit
             if current_price >= trade.take_profit:
-                logger.info(f"Take profit triggered for {trade.symbol} at {current_price}")
+                logger.info(f"Take profit triggered for {trade.symbol} at ${current_price}")
                 trade.status = "closed"
                 return
 
+            # Calculate current P&L
+            pnl_percent = ((current_price - trade.entry_price) / trade.entry_price) * 100
+            logger.info(f"Current P&L for {trade.symbol}: {pnl_percent:.2f}%")
+
         except Exception as e:
             logger.error(f"Error updating trade {trade}: {str(e)}")
+            logger.error(traceback.format_exc())
 
     async def _trading_loop(self):
         """Main trading loop."""
         while self.is_running:
             try:
+                # Check connections periodically
+                if not await self._check_connections():
+                    logger.error("Connection check failed, pausing trading")
+                    await asyncio.sleep(60)  # Wait a minute before retrying
+                    continue
+
                 # Reset daily trade counter if needed
                 today = datetime.now().date()
                 if today > self.last_trade_reset:
@@ -325,21 +452,40 @@ class TradingBot:
                     logger.info("Maximum positions reached")
                     await asyncio.sleep(60)  # Check again in a minute
                     continue
+
+                # Get wallet balance
+                balance = self.wallet.get_balance()
+                if balance <= 0.1:  # Minimum 0.1 SOL required
+                    logger.warning(f"Insufficient balance: {balance} SOL")
+                    await asyncio.sleep(60)
+                    continue
                 
                 # Update active trades
-                for trade in self.get_active_trades():
+                active_trades = self.get_active_trades()
+                logger.info(f"Updating {len(active_trades)} active trades")
+                for trade in active_trades:
                     await self._update_trade(trade)
                 
                 # Look for new trading opportunities
+                logger.info("Searching for trading opportunities...")
                 opportunities = await self._find_trading_opportunities()
-                for opp in opportunities:
-                    if await self._execute_trade(opp):
-                        self.active_trades.append(opp)
-                        self.trades_today += 1
+                
+                if opportunities:
+                    logger.info(f"Found {len(opportunities)} trading opportunities")
+                    for opp in opportunities:
+                        if await self._execute_trade(opp):
+                            self.active_trades.append(opp)
+                            self.trades_today += 1
+                            logger.info(f"Successfully executed trade for {opp.symbol}")
+                        else:
+                            logger.error(f"Failed to execute trade for {opp.symbol}")
+                else:
+                    logger.debug("No trading opportunities found")
                 
                 # Sleep before next iteration
-                await asyncio.sleep(1)  # Adjust sleep time as needed
+                await asyncio.sleep(30)  # Check every 30 seconds
                 
             except Exception as e:
                 logger.error(f"Error in trading loop: {str(e)}")
-                await asyncio.sleep(5)  # Sleep before retrying
+                logger.error(traceback.format_exc())
+                await asyncio.sleep(60)  # Wait longer on error
