@@ -63,6 +63,13 @@ class TradingBot:
         self.position_value = metrics.position_value
         self.pnl = metrics.pnl
         
+        # Connect wallet if not already connected
+        if not self.wallet.is_connected():
+            success, message = self.wallet.connect()
+            if not success:
+                logger.error(f"Failed to connect wallet: {message}")
+                raise RuntimeError(f"Failed to connect wallet: {message}")
+        
         logger.debug("TradingBot initialized with config: %s", config)
     
     def get_balance(self) -> float:
@@ -81,6 +88,16 @@ class TradingBot:
         """Get list of historical trades."""
         return [trade for trade in self.active_trades if trade.status != 'open']
     
+    def get_trading_stats(self) -> Dict[str, int]:
+        """Get trading statistics."""
+        return {
+            'total_trades': len(self.active_trades),
+            'active_trades': len(self.get_active_trades()),
+            'closed_trades': len([t for t in self.active_trades if t.status == 'closed']),
+            'cancelled_trades': len([t for t in self.active_trades if t.status == 'cancelled']),
+            'trades_today': self.trades_today
+        }
+    
     def start(self):
         """Start the trading bot."""
         if not self.is_running:
@@ -96,95 +113,54 @@ class TradingBot:
                 self._trading_task.cancel()
             logger.info("Trading bot stopped")
     
-    def add_trade(self, symbol: str, quantity: float, entry_price: float, side: str) -> Trade:
-        """Add a new trade."""
-        trade = Trade(
-            symbol=symbol,
-            quantity=quantity,
-            entry_price=entry_price,
-            side=side,
-            stop_loss=entry_price * (1 - self.config.stop_loss) if side == 'buy' else entry_price * (1 + self.config.stop_loss),
-            take_profit=entry_price * (1 + self.config.take_profit) if side == 'buy' else entry_price * (1 - self.config.take_profit)
-        )
-        self.active_trades.append(trade)
-        logger.info(f"Added new trade: {trade}")
-        return trade
-    
-    def close_trade(self, trade: Trade, exit_price: float):
-        """Close an existing trade."""
-        if trade in self.active_trades:
-            trade.status = 'closed'
-            logger.info(f"Closed trade: {trade} at price {exit_price}")
-            
-    def cancel_trade(self, trade: Trade):
-        """Cancel an existing trade."""
-        if trade in self.active_trades:
-            trade.status = 'cancelled'
-            logger.info(f"Cancelled trade: {trade}")
-            
-    def get_trading_stats(self) -> Dict:
-        """Get current trading statistics."""
-        return {
-            'total_trades': len(self.active_trades),
-            'active_trades': len(self.get_active_trades()),
-            'closed_trades': len([t for t in self.active_trades if t.status == 'closed']),
-            'cancelled_trades': len([t for t in self.active_trades if t.status == 'cancelled']),
-            'trades_today': self.trades_today
-        }
-    
-    async def place_order(self, token_address: str, amount: float, is_buy: bool):
-        """Place a buy or sell order."""
-        # Reset trades count if it's a new day
-        current_date = datetime.now().date()
-        if current_date > self.last_trade_reset:
-            self.trades_today = 0
-            self.last_trade_reset = current_date
-
-        # Check trade limits
-        if self.trades_today >= self.config.max_trades_per_day:
-            logger.warning("Daily trade limit reached")
-            return None
-
-        if len(self.get_active_trades()) >= self.config.max_positions:
-            logger.warning("Maximum positions limit reached")
-            return None
-
-        try:
-            # TODO: Implement actual order placement logic
-            logger.info(f"Placing {'buy' if is_buy else 'sell'} order for {amount} of {token_address}")
-            return None
-        except Exception as e:
-            logger.error(f"Failed to place order: {e}")
-            return None
-
     async def _trading_loop(self):
         """Main trading loop."""
-        logger.info("Starting trading loop")
         while self.is_running:
             try:
-                # TODO: Implement trading strategy
-                await asyncio.sleep(1)
-            except Exception as e:
-                logger.error(f"Error in trading loop: {e}")
-                await asyncio.sleep(5)  # Wait before retrying
-
-    async def get_token_price(self, token_address: str) -> float:
-        """Get current token price from Dexscreener."""
-        # Implementation for getting price from Dexscreener
-        pass
-
-    async def run(self):
-        """Main trading loop."""
-        self.is_running = True
-        while self.is_running:
-            try:
-                # Reset daily trade count if needed
+                # Reset daily trade counter if needed
                 today = datetime.now().date()
                 if today > self.last_trade_reset:
                     self.trades_today = 0
                     self.last_trade_reset = today
-                    
-                # Trading logic implementation
-                await asyncio.sleep(1)
+                
+                # Check if we can make more trades today
+                if self.trades_today >= self.config.max_trades_per_day:
+                    logger.info("Daily trade limit reached")
+                    await asyncio.sleep(60)  # Check again in a minute
+                    continue
+                
+                # Check if we have too many positions open
+                if len(self.get_active_trades()) >= self.config.max_positions:
+                    logger.info("Maximum positions reached")
+                    await asyncio.sleep(60)  # Check again in a minute
+                    continue
+                
+                # Update active trades
+                for trade in self.get_active_trades():
+                    await self._update_trade(trade)
+                
+                # Look for new trading opportunities
+                await self._find_trading_opportunities()
+                
+                # Sleep before next iteration
+                await asyncio.sleep(1)  # Adjust sleep time as needed
+                
             except Exception as e:
-                logger.error(f"Error in trading loop: {e}")
+                logger.error(f"Error in trading loop: {str(e)}")
+                await asyncio.sleep(5)  # Sleep before retrying
+    
+    async def _update_trade(self, trade: Trade):
+        """Update a single trade."""
+        try:
+            # TODO: Implement trade update logic
+            pass
+        except Exception as e:
+            logger.error(f"Error updating trade {trade}: {str(e)}")
+    
+    async def _find_trading_opportunities(self):
+        """Find new trading opportunities."""
+        try:
+            # TODO: Implement trading opportunity detection
+            pass
+        except Exception as e:
+            logger.error(f"Error finding trading opportunities: {str(e)}")
