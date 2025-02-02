@@ -3,6 +3,7 @@
 from solders.keypair import Keypair
 from solana.rpc.api import Client
 from solders.rpc.responses import GetBalanceResp
+from solders.pubkey import Pubkey
 from bot.security.win_credentials import WindowsCredManager
 import logging
 import binascii
@@ -10,7 +11,8 @@ import traceback
 import requests
 import json
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
+import base58
 
 logger = logging.getLogger(__name__)
 
@@ -19,35 +21,121 @@ class PhantomWalletManager:
     
     SOLSCAN_API_BASE = "https://public-api.solscan.io"
     SOLANA_RPC = "https://api.mainnet-beta.solana.com"
+    DEFAULT_WALLET = "8jqv2AKPGYwojLRHQZLokkYdtHycs8HAVGDMqZUvTByB"  # Your wallet address
     
     def __init__(self):
         """Initialize wallet manager."""
         logger.debug("=== BEGIN WALLET MANAGER INITIALIZATION ===")
-        self.client = Client(self.SOLANA_RPC)
-        self.cred_manager = WindowsCredManager()
-        self._keypair = None
-        self._is_connected = False
-        self._solscan_api_key = os.getenv('SOLSCAN_API_KEY')  # Optional API key for higher rate limits
-        logger.debug("PhantomWalletManager basic initialization complete")
+        try:
+            self.client = Client(self.SOLANA_RPC)
+            self.cred_manager = WindowsCredManager()
+            self._keypair = None
+            self._pubkey = None
+            self._is_connected = False
+            self._solscan_api_key = os.getenv('SOLSCAN_API_KEY')
+            logger.debug("PhantomWalletManager basic initialization complete")
+            
+            # Try to initialize with default wallet
+            self.initialize_with_address(self.DEFAULT_WALLET)
+        except Exception as e:
+            logger.error(f"Failed to initialize PhantomWalletManager: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise RuntimeError(f"Wallet initialization failed: {str(e)}")
         logger.debug("=== END WALLET MANAGER INITIALIZATION ===")
 
-    @property
-    def keypair(self) -> Keypair:
-        """Get the keypair, ensuring initialization."""
-        if self._keypair is None:
-            logger.error("Keypair accessed before initialization!")
-            raise RuntimeError("Wallet not initialized - call initialize_wallet() first")
-        return self._keypair
-
-    def _debug_keypair(self, keypair: bytes, name: str) -> None:
-        """Debug helper for keypair data."""
+    def initialize_with_address(self, address: str) -> Tuple[bool, str]:
+        """Initialize wallet with a public address."""
         try:
-            logger.debug(f"{name} length: {len(keypair)}")
-            logger.debug(f"{name} hex: {binascii.hexlify(keypair).decode()}")
-            logger.debug(f"{name} first 8 bytes: {list(keypair[:8])}")
+            logger.debug(f"Initializing wallet with address: {address}")
+            
+            # Convert address to Pubkey
+            try:
+                self._pubkey = Pubkey.from_string(address)
+                logger.debug(f"Successfully created Pubkey from address: {self._pubkey}")
+            except Exception as e:
+                error_msg = f"Invalid wallet address: {str(e)}"
+                logger.error(error_msg)
+                return False, error_msg
+            
+            # Test RPC connection
+            rpc_success, rpc_msg = self._test_rpc_connection()
+            if not rpc_success:
+                return False, rpc_msg
+            
+            # Test Solscan connection
+            solscan_success, solscan_msg = self._test_solscan_connection()
+            if not solscan_success:
+                logger.warning(solscan_msg)  # Just warn, don't fail
+            
+            # Get account info
+            account_info = self._get_solscan_account_info(address)
+            if account_info:
+                logger.debug("Successfully retrieved account info from Solscan")
+            
+            # Test balance check
+            try:
+                balance_resp = self.client.get_balance(address)
+                if not isinstance(balance_resp, GetBalanceResp):
+                    return False, "Invalid response type from get_balance"
+                
+                balance = balance_resp.value / 10**9  # Convert lamports to SOL
+                logger.debug(f"Connection test successful. Balance: {balance} SOL")
+                self._is_connected = True
+                return True, "Wallet initialized successfully"
+                
+            except Exception as e:
+                error_msg = f"Balance check failed: {str(e)}"
+                logger.error(error_msg)
+                logger.error(traceback.format_exc())
+                return False, error_msg
+                
         except Exception as e:
-            logger.error(f"Failed to debug {name}: {str(e)}")
+            error_msg = f"Wallet initialization failed: {str(e)}"
+            logger.error(error_msg)
             logger.error(traceback.format_exc())
+            self._pubkey = None
+            self._is_connected = False
+            return False, error_msg
+
+    @property
+    def pubkey(self) -> Pubkey:
+        """Get the public key."""
+        if self._pubkey is None:
+            raise RuntimeError("Wallet not initialized")
+        return self._pubkey
+
+    def _test_rpc_connection(self) -> Tuple[bool, str]:
+        """Test RPC connection."""
+        try:
+            # Test basic connection
+            response = self.client.get_version()
+            logger.debug(f"RPC Version response: {response}")
+            return True, "RPC connection successful"
+        except Exception as e:
+            error_msg = f"RPC connection failed: {str(e)}"
+            logger.error(error_msg)
+            logger.error(traceback.format_exc())
+            return False, error_msg
+
+    def _test_solscan_connection(self) -> Tuple[bool, str]:
+        """Test Solscan API connection."""
+        try:
+            headers = {'Accept': 'application/json'}
+            if self._solscan_api_key:
+                headers['token'] = self._solscan_api_key
+
+            # Test with default wallet address
+            url = f"{self.SOLSCAN_API_BASE}/account/{self.DEFAULT_WALLET}"
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            
+            logger.debug("Solscan connection successful")
+            return True, "Solscan connection successful"
+        except Exception as e:
+            error_msg = f"Solscan connection failed: {str(e)}"
+            logger.error(error_msg)
+            logger.error(traceback.format_exc())
+            return False, error_msg
 
     def _get_solscan_account_info(self, address: str) -> Optional[Dict[str, Any]]:
         """Get account information from Solscan."""
@@ -57,6 +145,7 @@ class PhantomWalletManager:
                 headers['token'] = self._solscan_api_key
 
             url = f"{self.SOLSCAN_API_BASE}/account/{address}"
+            logger.debug(f"Requesting Solscan info for address: {address}")
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             
@@ -65,77 +154,25 @@ class PhantomWalletManager:
             return data
         except Exception as e:
             logger.error(f"Failed to get Solscan account info: {str(e)}")
-            return None
-
-    def initialize_wallet(self, secret_bytes: bytes) -> bool:
-        """Initialize wallet with secret bytes."""
-        try:
-            logger.debug("=== BEGIN WALLET INITIALIZATION ===")
-            self._debug_keypair(secret_bytes, "Input secret")
-            
-            # Store the secret bytes
-            logger.debug("Storing keypair in credential manager")
-            self.cred_manager.store_phantom_credentials(secret_bytes)
-            
-            # Create keypair from secret
-            logger.debug("Creating Solana keypair")
-            seed = secret_bytes[:32]  # Use first 32 bytes as seed
-            self._keypair = Keypair.from_seed(seed)
-            
-            # Verify keypair was created
-            if self._keypair is None:
-                raise RuntimeError("Failed to create keypair")
-                
-            pubkey = self._keypair.pubkey()
-            logger.debug(f"Created keypair with public key: {pubkey}")
-            
-            # Get account info from Solscan
-            account_info = self._get_solscan_account_info(str(pubkey))
-            if account_info:
-                logger.debug("Successfully retrieved account info from Solscan")
-                
-            # Test connection with RPC
-            logger.debug("Testing RPC connection with balance check")
-            try:
-                balance_resp = self.client.get_balance(str(pubkey))
-                if not isinstance(balance_resp, GetBalanceResp):
-                    raise RuntimeError("Invalid response type from get_balance")
-                
-                balance = balance_resp.value / 10**9  # Convert lamports to SOL
-                logger.debug(f"Connection test successful. Balance: {balance} SOL")
-                self._is_connected = True
-            except Exception as e:
-                logger.error(f"Balance check failed: {str(e)}")
-                logger.error(traceback.format_exc())
-                # Don't raise here - wallet might be valid but empty
-            
-            logger.debug("=== END WALLET INITIALIZATION ===")
-            return True
-            
-        except Exception as e:
-            logger.error("=== WALLET INITIALIZATION FAILED ===")
-            logger.error(f"Error: {str(e)}")
             logger.error(traceback.format_exc())
-            self._keypair = None
-            self._is_connected = False
-            raise
+            return None
 
     def get_balance(self) -> float:
         """Get wallet SOL balance."""
-        if self._keypair is None:
-            raise RuntimeError("Wallet not initialized - call initialize_wallet() first")
+        if not self._is_connected:
+            raise RuntimeError("Wallet not connected")
             
         try:
-            pubkey = self._keypair.pubkey()
-            logger.debug(f"Checking balance for {pubkey}")
+            address = str(self._pubkey)
+            logger.debug(f"Checking balance for {address}")
             
             # Try Solscan first for more detailed info
-            account_info = self._get_solscan_account_info(str(pubkey))
+            account_info = self._get_solscan_account_info(address)
             if account_info and 'lamports' in account_info:
                 return float(account_info['lamports']) / 10**9
             
             # Fallback to RPC
-            balance_resp = self.client.get_balance(str(pubkey))
+            balance_resp = self.client.get_balance(address)
             if not isinstance(balance_resp, GetBalanceResp):
                 raise RuntimeError("Invalid response type from get_balance")
                 
@@ -147,12 +184,12 @@ class PhantomWalletManager:
 
     def get_token_balances(self) -> Dict[str, float]:
         """Get all token balances for the wallet."""
-        if self._keypair is None:
-            raise RuntimeError("Wallet not initialized - call initialize_wallet() first")
+        if not self._is_connected:
+            raise RuntimeError("Wallet not connected")
             
         try:
-            pubkey = str(self._keypair.pubkey())
-            account_info = self._get_solscan_account_info(pubkey)
+            address = str(self._pubkey)
+            account_info = self._get_solscan_account_info(address)
             
             if not account_info:
                 return {}
@@ -170,57 +207,33 @@ class PhantomWalletManager:
             logger.error(f"Failed to get token balances: {str(e)}")
             return {}
 
-    def connect(self) -> bool:
+    def connect(self) -> Tuple[bool, str]:
         """Connect to Solana network."""
         try:
             logger.debug("Attempting to connect to Solana network")
             
-            # If we don't have a keypair, try to load from credentials
-            if self._keypair is None:
-                try:
-                    secret_bytes = self.cred_manager.get_credentials('PhantomBotKey')
-                    if secret_bytes:
-                        logger.debug("Found existing credentials, initializing wallet")
-                        return self.initialize_wallet(secret_bytes)
-                except Exception as e:
-                    logger.error(f"Failed to load existing credentials: {str(e)}")
-                    return False
+            # If already connected, return success
+            if self._is_connected and self._pubkey is not None:
+                return True, "Already connected"
             
-            # Test connection with Solscan and RPC
-            if self._keypair:
-                pubkey = str(self._keypair.pubkey())
-                logger.debug(f"Testing connection for {pubkey}")
-                
-                # Check Solscan connection
-                account_info = self._get_solscan_account_info(pubkey)
-                if account_info:
-                    logger.debug("Successfully connected to Solscan")
-                
-                # Check RPC connection
-                balance_resp = self.client.get_balance(pubkey)
-                if isinstance(balance_resp, GetBalanceResp):
-                    balance = balance_resp.value / 10**9
-                    logger.debug(f"Successfully connected to RPC. Balance: {balance} SOL")
-                    self._is_connected = True
-                    return True
-                    
-            logger.error("No wallet initialized and no saved credentials found")
-            return False
+            # Initialize with default wallet address
+            return self.initialize_with_address(self.DEFAULT_WALLET)
                 
         except Exception as e:
-            logger.error(f"Connection failed: {str(e)}")
+            error_msg = f"Connection failed: {str(e)}"
+            logger.error(error_msg)
             logger.error(traceback.format_exc())
             self._is_connected = False
-            return False
+            return False, error_msg
             
     def is_connected(self) -> bool:
         """Check if wallet is connected."""
-        return self._is_connected and self._keypair is not None
+        return self._is_connected and self._pubkey is not None
         
     def get_explorer_url(self, pubkey: Optional[str] = None) -> str:
         """Get Solscan explorer URL for the wallet or a specific address."""
-        if pubkey is None and self._keypair:
-            pubkey = str(self._keypair.pubkey())
+        if pubkey is None and self._pubkey is not None:
+            pubkey = str(self._pubkey)
         if pubkey:
             return f"https://solscan.io/account/{pubkey}"
         return "https://solscan.io"

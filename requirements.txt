@@ -71,3 +71,4 @@ python-binance>=1.0.19
 ccxt>=4.1.87
 PyJWT==2.8.0
 pre-commit==3.3.3
+base58

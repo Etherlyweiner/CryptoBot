@@ -9,7 +9,14 @@ import plotly.graph_objects as go
 from datetime import datetime
 from bot import TradingBot
 from dotenv import load_dotenv
+import logging
+import traceback
 
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# Load environment variables
 load_dotenv()
 
 # Page configuration
@@ -78,7 +85,7 @@ if 'bot' not in st.session_state:
             logger.debug("Created trading bot instance")
             
             # Show wallet address
-            wallet_address = wallet_manager.keypair.pubkey()
+            wallet_address = wallet_manager.pubkey
             st.sidebar.success(f"Connected to wallet: {wallet_address}")
             logger.debug(f"Connected to wallet address: {wallet_address}")
             
@@ -151,6 +158,7 @@ def render_wallet_info():
                 
     except Exception as e:
         logger.error(f"Error loading wallet info: {str(e)}")
+        logger.error(traceback.format_exc())
         st.error(f"Error loading wallet info: {str(e)}")
 
 def render_trading_settings():
@@ -199,6 +207,7 @@ def render_active_trades():
             
     except Exception as e:
         logger.error(f"Error loading active trades: {str(e)}")
+        logger.error(traceback.format_exc())
         st.error(f"Error loading active trades: {str(e)}")
 
 def render_trade_history():
@@ -229,6 +238,7 @@ def render_trade_history():
             
     except Exception as e:
         logger.error(f"Error loading trade history: {str(e)}")
+        logger.error(traceback.format_exc())
         st.error(f"Error loading trade history: {str(e)}")
 
 def render_trading_stats():
@@ -253,6 +263,7 @@ def render_trading_stats():
             
     except Exception as e:
         logger.error(f"Error loading trading stats: {str(e)}")
+        logger.error(traceback.format_exc())
         st.error(f"Error loading trading stats: {str(e)}")
 
 def main():
@@ -261,49 +272,20 @@ def main():
     
     # Initialize bot if not already done
     if 'bot' not in st.session_state:
-        try:
-            from bot.trading_bot import TradingConfig
-            from bot.wallet.phantom_integration import PhantomWalletManager
-            import logging
-            
-            # Set up logging
-            logging.basicConfig(level=logging.DEBUG)
-            logger = logging.getLogger(__name__)
-            
-            logger.debug("Starting bot initialization...")
-            
-            # Initialize Phantom Wallet
-            wallet_manager = PhantomWalletManager()
-            logger.debug("Created wallet manager")
-            
-            # Create trading config for Solana memecoin trading
-            config = TradingConfig(
-                base_currency='SOL',
-                quote_currency='USDC',
-                position_size=0.1,     # 10% of available balance
-                stop_loss=0.02,        # 2% stop loss
-                take_profit=0.05,      # 5% take profit
-                max_slippage=0.01,     # 1% max slippage
-                network='mainnet-beta', # Solana network
-                max_positions=5,        # Maximum number of concurrent positions
-                max_trades_per_day=10   # Maximum number of trades per day
-            )
-            logger.debug("Created trading config")
-            
-            # Initialize trading bot
-            st.session_state.bot = TradingBot(wallet=wallet_manager, config=config)
-            logger.debug("Created trading bot instance")
-            
-        except Exception as e:
-            st.error(f"Failed to initialize Trading Bot: {str(e)}")
-            logger.exception("Bot initialization failed")
+        success, message = initialize_bot()
+        if not success:
+            st.error(message)
             st.stop()
     
     # Wallet connection status
     wallet = st.session_state.bot.wallet
     if wallet.is_connected():
-        wallet_address = wallet.keypair.pubkey()
+        wallet_address = str(wallet.pubkey)
         st.sidebar.success(f"Connected to wallet: {wallet_address}")
+        
+        # Add Solscan link
+        explorer_url = wallet.get_explorer_url()
+        st.sidebar.markdown(f"[View on Solscan]({explorer_url})")
     else:
         st.sidebar.warning("Wallet not connected")
     
@@ -312,15 +294,17 @@ def main():
         if st.button("Connect Phantom Wallet"):
             with st.spinner("Connecting to Phantom wallet..."):
                 try:
-                    if wallet.connect():
-                        wallet_address = wallet.keypair.pubkey()
+                    success, message = wallet.connect()
+                    if success:
+                        wallet_address = str(wallet.pubkey)
                         st.sidebar.success(f"Connected to wallet: {wallet_address}")
                         st.experimental_rerun()
                     else:
-                        st.error("Failed to connect to Phantom wallet. Please check your credentials and try again.")
+                        st.error(f"Failed to connect: {message}")
                 except Exception as e:
                     logger.error(f"Wallet connection error: {str(e)}")
-                    st.error(f"Failed to connect: {str(e)}")
+                    logger.error(traceback.format_exc())
+                    st.error(f"Connection error: {str(e)}")
     
     # Main dashboard sections
     if wallet.is_connected():
