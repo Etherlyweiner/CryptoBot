@@ -1,6 +1,6 @@
 """Prometheus metrics collection for CryptoBot."""
 
-from prometheus_client import Counter, Gauge, Histogram, start_http_server
+from prometheus_client import Counter, Gauge, Histogram, start_http_server, CollectorRegistry
 import time
 from typing import Dict, Optional
 from decimal import Decimal
@@ -12,88 +12,117 @@ logger = logging.getLogger('MetricsCollector')
 class MetricsCollector:
     """Collects and exposes Prometheus metrics."""
     
+    _instance = None
+    
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
     def __init__(self, port: int = 9090):
         """Initialize metrics collector."""
+        if self._initialized:
+            return
+            
+        # Create a new registry
+        self.registry = CollectorRegistry()
+        
         # Trading metrics
         self.trade_count = Counter(
             'cryptobot_trades_total',
             'Total number of trades',
-            ['symbol', 'side', 'result']
+            ['symbol', 'side', 'result'],
+            registry=self.registry
         )
         
         self.position_size = Gauge(
             'cryptobot_position_size',
             'Current position size',
-            ['symbol']
+            ['symbol'],
+            registry=self.registry
         )
         
         self.position_value = Gauge(
             'cryptobot_position_value',
             'Current position value in quote currency',
-            ['symbol']
+            ['symbol'],
+            registry=self.registry
         )
         
         self.pnl = Counter(
             'cryptobot_pnl_total',
             'Total profit and loss',
-            ['symbol']
+            ['symbol'],
+            registry=self.registry
         )
         
         self.total_exposure = Gauge(
             'cryptobot_total_exposure',
-            'Total trading exposure'
+            'Total trading exposure',
+            registry=self.registry
         )
         
         self.current_drawdown = Gauge(
             'cryptobot_current_drawdown',
-            'Current drawdown percentage'
+            'Current drawdown percentage',
+            registry=self.registry
         )
         
         self.profit_loss = Counter(
             'cryptobot_profit_loss_total',
             'Total profit/loss',
-            ['symbol']
+            ['symbol'],
+            registry=self.registry
         )
         
         # Performance metrics
         self.api_latency = Histogram(
             'cryptobot_api_latency_seconds',
             'API request latency',
-            ['endpoint']
+            ['endpoint'],
+            registry=self.registry
         )
         
         self.order_execution_time = Histogram(
             'cryptobot_order_execution_seconds',
             'Order execution time',
-            ['symbol', 'side']
+            ['symbol', 'side'],
+            registry=self.registry
         )
         
         # System metrics
         self.memory_usage = Gauge(
             'cryptobot_memory_bytes',
-            'Memory usage in bytes'
+            'Memory usage in bytes',
+            registry=self.registry
         )
         
         self.cpu_usage = Gauge(
             'cryptobot_cpu_percent',
-            'CPU usage percentage'
+            'CPU usage percentage',
+            registry=self.registry
         )
         
         self.db_connections = Gauge(
             'cryptobot_db_connections',
-            'Number of active database connections'
+            'Number of active database connections',
+            registry=self.registry
         )
         
         # Error metrics
         self.error_count = Counter(
             'cryptobot_errors_total',
             'Total number of errors',
-            ['type']
+            ['type'],
+            registry=self.registry
         )
         
-        # Start metrics server
-        start_http_server(port)
+        # Start metrics server with our registry
+        start_http_server(port, registry=self.registry)
         logger.info(f"Metrics server started on port {port}")
+        
+        self._initialized = True
         
     def track_trade(self,
                    symbol: str,

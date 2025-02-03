@@ -122,8 +122,10 @@ class PhantomWalletManager:
             try:
                 logger.debug(f"Testing RPC connection to {rpc}")
                 test_client = Client(rpc)
-                response = test_client.get_version()
-                if response and hasattr(response, 'solana_core'):
+                
+                # Test connection by getting slot
+                response = test_client.get_slot()
+                if response is not None:
                     logger.info(f"Successfully connected to RPC {rpc}")
                     self.client = test_client  # Update client to working RPC
                     self.SOLANA_RPC = rpc     # Update RPC URL
