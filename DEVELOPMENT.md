@@ -1,128 +1,217 @@
 # Development Guidelines
 
-## Code Style
+## Code Style and Standards
 
-1. **Python Version**
-   - Use Python 3.10 or higher
+### Python Version and Environment
+- Use Python 3.10 or higher
+- Always use virtual environments
+- Maintain `requirements.txt` and `setup.py`
+- Use `pip-tools` for dependency management
+
+### Code Quality
+1. **Type Hints and Documentation**
    - Use type hints for all function parameters and return values
-   - Use docstrings for all modules, classes, and functions
+   - Write comprehensive docstrings (Google style)
+   - Include examples in docstrings for complex functions
+   - Document exceptions and edge cases
 
 2. **Code Formatting**
-   - Use Black for code formatting
-   - Use isort for import sorting
-   - Use flake8 for linting
-   - Use mypy for type checking
+   - Use Black for code formatting: `black src/`
+   - Sort imports with isort: `isort src/`
+   - Lint with flake8: `flake8 src/`
+   - Type check with mypy: `mypy src/`
 
 3. **Naming Conventions**
    - Use snake_case for functions and variables
    - Use PascalCase for classes
    - Use UPPER_CASE for constants
    - Prefix private methods/variables with underscore
+   - Use descriptive names that reflect purpose
 
-## Development Process
+### Project Structure
+```
+cryptobot/
+├── src/
+│   └── cryptobot/
+│       ├── ui/            # Streamlit components
+│       ├── trading/       # Trading logic
+│       ├── wallet/        # Wallet integration
+│       ├── monitoring/    # Logging and metrics
+│       └── config/        # Configuration
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   └── e2e/
+├── docs/
+├── scripts/
+└── config/
+```
 
-1. **Version Control**
-   - Keep the repository private
-   - Use feature branches for development
-   - Write meaningful commit messages
-   - Never commit sensitive data
+## Development Workflow
 
-2. **Testing**
-   - Write unit tests for all new features
-   - Maintain test coverage above 80%
-   - Run tests before committing
-   - Use pytest for testing
+### 1. Setting Up Development Environment
+```bash
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 
-3. **Documentation**
-   - Keep README.md up to date
-   - Document all configuration options
-   - Include examples for new features
-   - Update CHANGELOG.md for releases
+# Install dependencies
+pip install -e ".[dev]"
 
-## Security
+# Install pre-commit hooks
+pre-commit install
+```
 
-1. **Sensitive Data**
-   - Never commit API keys or secrets
-   - Use environment variables for configuration
-   - Rotate API keys regularly
-   - Use strong encryption for stored secrets
+### 2. Making Changes
+1. Create a feature branch:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
 
-2. **Access Control**
-   - Keep repository private
-   - Use IP whitelisting
-   - Implement rate limiting
-   - Monitor system access
+2. Write tests first:
+   ```bash
+   # Create test file
+   touch tests/unit/test_your_feature.py
+   
+   # Run tests
+   pytest tests/unit/test_your_feature.py
+   ```
 
-## Performance
+3. Implement your feature:
+   - Follow type hints and documentation requirements
+   - Keep functions small and focused
+   - Use dependency injection where appropriate
+   - Handle errors gracefully
 
-1. **Optimization**
-   - Use caching where appropriate
-   - Optimize database queries
-   - Monitor memory usage
-   - Profile slow operations
+4. Run quality checks:
+   ```bash
+   # Format code
+   black src/
+   isort src/
+   
+   # Run linting
+   flake8 src/
+   
+   # Type checking
+   mypy src/
+   
+   # Run all tests
+   pytest
+   ```
 
-2. **Resource Management**
-   - Clean up resources properly
-   - Use connection pooling
-   - Implement proper error handling
-   - Monitor system health
+### 3. Code Review Process
+1. Self-review checklist:
+   - [ ] Tests pass and coverage maintained
+   - [ ] Documentation updated
+   - [ ] Code formatted and linted
+   - [ ] No sensitive data exposed
+   - [ ] Error handling implemented
+   - [ ] Logging added for important operations
 
-## Deployment
-
-1. **Environment Setup**
-   - Use virtual environments
-   - Document all dependencies
-   - Version lock dependencies
-   - Test in isolated environment
-
-2. **Monitoring**
-   - Use Prometheus for metrics
-   - Set up logging
-   - Monitor system health
-   - Track performance metrics
-
-## Backup and Recovery
-
-1. **Data Protection**
-   - Regular database backups
-   - Configuration backups
-   - Secure backup storage
-   - Test restore procedures
-
-2. **Disaster Recovery**
-   - Document recovery procedures
-   - Test recovery regularly
-   - Maintain backup history
-   - Monitor backup success
-
-## Code Review Guidelines
-
-1. **Review Checklist**
-   - Check for security issues
-   - Verify error handling
-   - Review performance impact
-   - Validate documentation
-   - Ensure test coverage
-   - Check code style compliance
-
-2. **Review Process**
-   - Use descriptive PR titles
+2. Pull Request guidelines:
+   - Use PR template
+   - Link related issues
    - Include test results
-   - Document changes clearly
-   - Address all comments
+   - Add screenshots for UI changes
+   - Describe breaking changes
+
+## Testing Guidelines
+
+### 1. Unit Tests
+- Test each function in isolation
+- Use pytest fixtures
+- Mock external dependencies
+- Test edge cases and errors
+- Maintain high coverage
+
+### 2. Integration Tests
+- Test component interactions
+- Use test databases
+- Mock external APIs
+- Test configuration loading
+- Verify logging and metrics
+
+### 3. End-to-End Tests
+- Test complete workflows
+- Use staging environment
+- Test UI interactions
+- Verify data persistence
+- Check monitoring systems
+
+## Security Best Practices
+
+### 1. Code Security
+- Use secure dependencies
+- Implement input validation
+- Sanitize all user inputs
+- Use secure random number generation
+- Implement rate limiting
+
+### 2. Data Security
+- Never commit sensitive data
+- Use environment variables
+- Encrypt sensitive storage
+- Implement secure backup
+- Regular security audits
+
+### 3. API Security
+- Use API keys and JWT
+- Implement rate limiting
+- Validate all inputs
+- Use HTTPS only
+- Monitor for abuse
+
+## Monitoring and Logging
+
+### 1. Logging
+- Use structured logging
+- Include context in logs
+- Set appropriate log levels
+- Implement log rotation
+- Monitor log volume
+
+### 2. Metrics
+- Track key performance indicators
+- Monitor system health
+- Set up alerting
+- Use Prometheus labels
+- Track error rates
+
+## Documentation
+
+### 1. Code Documentation
+- Write clear docstrings
+- Include usage examples
+- Document configuration
+- Explain complex algorithms
+- Keep comments current
+
+### 2. Project Documentation
+- Maintain README.md
+- Update CHANGELOG.md
+- Document deployment
+- Include troubleshooting
+- Add architecture diagrams
 
 ## Release Process
 
-1. **Version Numbers**
-   - Use semantic versioning (MAJOR.MINOR.PATCH)
-   - Document all changes
-   - Tag releases in git
-   - Update CHANGELOG.md
+### 1. Preparation
+- Update version numbers
+- Update CHANGELOG.md
+- Run full test suite
+- Update documentation
+- Review dependencies
 
-2. **Release Checklist**
-   - Run full test suite
-   - Update documentation
-   - Check dependencies
-   - Verify backups
-   - Test in staging
-   - Update version numbers
+### 2. Release Steps
+1. Create release branch
+2. Run final tests
+3. Build distribution
+4. Create GitHub release
+5. Deploy to production
+
+### 3. Post-Release
+- Monitor for issues
+- Update documentation
+- Notify users
+- Clean up branches
+- Plan next release
