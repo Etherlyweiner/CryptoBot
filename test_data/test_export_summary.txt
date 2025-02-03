@@ -1,0 +1,24 @@
+Token Analysis Summary
+===================
+
+Total Tokens Analyzed: 2
+
+Market Cap Statistics:
+Average: $1,500,000.00
+Median: $1,500,000.00
+Max: $2,000,000.00
+
+Liquidity Statistics:
+Average: $75,000.00
+Median: $75,000.00
+
+Holder Statistics:
+Average Holders: 750
+Median Holders: 750
+
+Risk Score Distribution:
+Score 0.0-0.2: 1 tokens
+Score 0.2-0.4: 1 tokens
+Score 0.4-0.6: 0 tokens
+Score 0.6-0.8: 0 tokens
+Score 0.8-1.0: 0 tokens

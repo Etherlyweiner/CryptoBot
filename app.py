@@ -4,14 +4,13 @@ CryptoBot Dashboard Application
 
 import os
 import streamlit as st
-import pandas as pd
-from datetime import datetime, timedelta
-import asyncio
 import logging
+from datetime import datetime
 from pathlib import Path
 import json
 import sys
-from spl_governance import PublicKey  # Import PublicKey from spl_governance
+from solana.rpc.async_api import AsyncClient
+from solders.pubkey import Pubkey
 
 # Add project root to Python path
 project_root = str(Path(__file__).parent)
@@ -47,7 +46,7 @@ def render_wallet_info(bot):
         if 'wallet_address' in st.session_state:
             try:
                 # Validate wallet address format
-                PublicKey(st.session_state.wallet_address)
+                Pubkey(st.session_state.wallet_address)
                 st.info(f"Connected Wallet: {st.session_state.wallet_address[:8]}...{st.session_state.wallet_address[-8:]}")
             except ValueError:
                 st.error("Invalid wallet address format")
@@ -69,13 +68,13 @@ def render_bot_controls(bot):
     with col1:
         if st.button("Start Bot", disabled=st.session_state.get('bot_running', False)):
             st.session_state.bot_running = True
-            asyncio.create_task(bot.start())
+            bot.start()
             st.success("Bot started successfully!")
     
     with col2:
         if st.button("Stop Bot", disabled=not st.session_state.get('bot_running', False)):
             st.session_state.bot_running = False
-            asyncio.create_task(bot.stop())
+            bot.stop()
             st.info("Bot stopped successfully!")
 
 def render_market_info():
@@ -91,6 +90,32 @@ def render_market_info():
     with col3:
         st.metric("Market Cap", "$42.5B", "1.2%")
 
+async def get_wallet_balance():
+    """Get wallet balance with retries and proper error handling"""
+    try:
+        # Use environment variables with fallbacks
+        network = os.getenv('NETWORK', 'mainnet-beta')
+        helius_key = os.getenv('HELIUS_API_KEY')
+        wallet_address = os.getenv('WALLET_ADDRESS')
+        
+        if not all([network, helius_key, wallet_address]):
+            st.error("Missing required configuration. Please check your environment variables.")
+            return None
+            
+        # Initialize RPC client with retry logic
+        rpc_url = f"https://rpc.helius.xyz/?api-key={helius_key}"
+        client = AsyncClient(rpc_url, commitment="confirmed")
+        
+        # Get wallet balance
+        pubkey = Pubkey.from_string(wallet_address)
+        balance = await client.get_balance(pubkey)
+        return balance.value / 1e9  # Convert lamports to SOL
+    except Exception as e:
+        st.error(f"Failed to get wallet balance: {str(e)}")
+        return None
+    finally:
+        await client.close()
+
 async def update_wallet_balance(bot):
     """Update wallet balance."""
     try:
@@ -99,7 +124,7 @@ async def update_wallet_balance(bot):
         # Validate wallet address
         try:
             wallet_address = st.session_state.wallet_address
-            PublicKey(wallet_address)
+            Pubkey(wallet_address)
             logger.info(f"Wallet address format valid: {wallet_address}")
         except ValueError as ve:
             error_msg = f"Invalid wallet address format: {str(ve)}"
@@ -119,12 +144,11 @@ async def update_wallet_balance(bot):
             logger.info("Connection established successfully")
         
         logger.info("Checking wallet balance...")
-        balance = await bot.check_balance()
+        balance = await get_wallet_balance()
         
         if balance is not None:
-            sol_balance = balance / 1e9
-            logger.info(f"Setting session state balance to {sol_balance:.4f} SOL")
-            st.session_state.wallet_balance = sol_balance
+            logger.info(f"Setting session state balance to {balance:.4f} SOL")
+            st.session_state.wallet_balance = balance
             st.session_state.last_balance_update = datetime.now()
             # Force Streamlit to update
             st.experimental_rerun()
@@ -185,15 +209,15 @@ def main():
         # Initial balance check
         if 'wallet_balance' not in st.session_state:
             logger.info("No wallet balance in session, performing initial check...")
-            asyncio.run(update_wallet_balance(bot))
+            bot.update_wallet_balance()
         
         # Update balance every 30 seconds if bot is running
         if st.session_state.get('bot_running', False):
             now = datetime.now()
-            last_update = st.session_state.get('last_balance_update', now - timedelta(minutes=1))
+            last_update = st.session_state.get('last_balance_update', now - datetime.timedelta(minutes=1))
             if (now - last_update).total_seconds() > 30:
                 logger.info("Updating wallet balance (30s refresh)...")
-                asyncio.run(update_wallet_balance(bot))
+                bot.update_wallet_balance()
     
     except Exception as e:
         error_msg = f"Main loop error: {str(e)}"

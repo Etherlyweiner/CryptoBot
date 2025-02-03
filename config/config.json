@@ -1,21 +1,25 @@
 {
     "helius": {
         "api_key": "74d34f4f-e88d-4da1-8178-01ef5749372c",
-        "network": "mainnet",
+        "network": "mainnet-beta",
+        "rpc_url": "https://rpc.helius.xyz/?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c",
         "timeout_ms": 30000
     },
     "wallet": {
-        "address": "7YTZcHQGJuReSDrQVvPCAj8qyxPzaUexHdKcswrumoyc"
+        "address": "7YTZcHQGJuReSDrQVvPCAj8qyxPzaUexHdKcswrumoyc",
+        "commitment": "confirmed"
     },
     "solscan": {
         "api_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjcmVhdGVkQXQiOjE3Mzg0OTIxOTc1OTUsImVtYWlsIjoiZXRoZXJseWNvbm5lY3RlZDExQHByb3Rvbm1haWwuY29tIiwiYWN0aW9uIjoidG9rZW4tYXBpIiwiYXBpVmVyc2lvbiI6InYyIiwiaWF0IjoxNzM4NDkyMTk3fQ.P_EMG0JRQX4acFFdBZh8qV8VCb9ldn8wQI4IohM8cEg",
         "version": "v2"
     },
     "token_validation": {
-        "min_liquidity_usd": 10000,
-        "min_daily_volume_usd": 5000,
+        "min_liquidity_usd": 50000,
+        "min_holders": 100,
+        "min_volume_24h": 10000,
+        "max_slippage_percent": 10,
         "required_verifications": 2,
-        "verification_sources": ["solscan", "dexscreener"],
+        "verification_sources": ["dexscreener", "solscan"],
         "blacklisted_tokens": [],
         "cache_duration_minutes": 30,
         "verification_checks": {
@@ -31,17 +35,43 @@
         }
     },
     "trading": {
-        "max_trade_size_sol": 0.1,
+        "max_position_size_sol": 0.5,
+        "max_daily_loss_sol": 1.0,
+        "max_trades_per_day": 10,
+        "profit_target_percent": 50,
+        "stop_loss_percent": 20,
+        "trailing_stop_percent": 10,
         "risk_level": "medium",
         "enable_stop_loss": true,
-        "stop_loss_percentage": 5.0,
         "max_slippage_percent": 1.0,
         "min_liquidity_ratio": 5.0
     },
+    "dex": {
+        "preferred": "jupiter",
+        "backup": "raydium",
+        "max_route_splits": 3
+    },
     "monitoring": {
+        "scan_interval_seconds": 60,
+        "balance_check_interval": 30,
+        "position_update_interval": 15,
         "enable_performance_metrics": true,
         "log_level": "info",
         "enable_telegram_notifications": false
+    },
+    "risk_management": {
+        "max_concurrent_trades": 3,
+        "max_wallet_exposure": 0.5,
+        "emergency_stop_loss": 0.2,
+        "profit_lock_threshold": 0.5
+    },
+    "notifications": {
+        "enabled": true,
+        "telegram": {
+            "enabled": true,
+            "bot_token": "",
+            "chat_id": ""
+        }
     },
     "websocket": {
         "enabled": true,
