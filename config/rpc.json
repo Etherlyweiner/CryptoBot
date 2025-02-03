@@ -1,0 +1,30 @@
+{
+    "primary": {
+        "name": "helius_main",
+        "url": "https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}",
+        "ws_url": "wss://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}"
+    },
+    "fallback": [
+        {
+            "name": "helius_backup",
+            "url": "https://mainnet.helius-rpc.com/?api-key=${HELIUS_BACKUP_API_KEY}",
+            "ws_url": "wss://mainnet.helius-rpc.com/?api-key=${HELIUS_BACKUP_API_KEY}"
+        }
+    ],
+    "settings": {
+        "max_retries": 3,
+        "retry_delay": 1000,
+        "timeout": 30000,
+        "switch_on_error": true,
+        "rate_limit": {
+            "requests_per_second": 45,
+            "burst_limit": 100,
+            "cooldown_period": 60000
+        },
+        "websocket": {
+            "ping_interval": 30000,
+            "reconnect_delay": 1000,
+            "max_reconnect_attempts": 5
+        }
+    }
+}
