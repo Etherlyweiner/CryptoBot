@@ -2,21 +2,26 @@
 Test Helius Connection using direct HTTP request
 """
 
+import os
 import requests
 import json
 from pathlib import Path
+from dotenv import load_dotenv
 
 def test_connection():
     print("Testing Helius RPC Connection...")
     
-    # Load RPC config
-    config_path = Path(__file__).parent.parent / "config" / "rpc.json"
-    with open(config_path) as f:
-        config = json.load(f)
+    # Load environment variables
+    load_dotenv()
+    api_key = os.getenv("HELIUS_API_KEY")
     
-    # Get primary endpoint
-    endpoint = config["primary"]["url"]
-    print(f"\nUsing endpoint: {endpoint}")
+    if not api_key:
+        print("Error: HELIUS_API_KEY not found in environment variables")
+        return False
+    
+    # Create endpoint URL with API key
+    endpoint = f"https://mainnet.helius-rpc.com/?api-key={api_key}"
+    print(f"\nTesting connection to Helius RPC...")
     
     # Prepare JSON-RPC request
     headers = {
@@ -31,7 +36,6 @@ def test_connection():
     }
     
     try:
-        print("\nTesting RPC connection...")
         response = requests.post(endpoint, headers=headers, json=payload)
         response.raise_for_status()
         result = response.json()

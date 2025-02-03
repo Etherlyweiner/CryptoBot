@@ -1,0 +1,26 @@
+{
+    "helius": {
+        "api_key": "74d34f4f-e88d-4da1-8178-01ef5749372c",
+        "network": "mainnet",
+        "timeout_ms": 30000
+    },
+    "wallet": {
+        "address": "4XXRjHQVjkajNA1qco3VYrrXFcG24t7tnCevttEFmpxr1RhZwRJJNPe5CWpxpBVW6AAf1vw575D3MgebFuzyJX77"
+    },
+    "trading": {
+        "max_trade_size_sol": 0.1,
+        "risk_level": "medium",
+        "enable_stop_loss": true,
+        "stop_loss_percentage": 5.0
+    },
+    "monitoring": {
+        "enable_performance_metrics": true,
+        "log_level": "info",
+        "enable_telegram_notifications": false
+    },
+    "websocket": {
+        "enabled": true,
+        "reconnect_delay_ms": 1000,
+        "max_reconnect_attempts": 5
+    }
+}

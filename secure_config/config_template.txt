@@ -1,0 +1,26 @@
+# Helius API Configuration
+HELIUS_PRIMARY_API_KEY=your_primary_api_key_here
+HELIUS_BACKUP_API_KEY=your_backup_api_key_here
+
+# Network Configuration
+SOLANA_NETWORK=mainnet  # Options: mainnet, devnet
+RPC_TIMEOUT_MS=30000
+
+# Wallet Configuration
+PHANTOM_WALLET_ADDRESS=your_wallet_address_here
+
+# Trading Parameters
+MAX_TRADE_SIZE_SOL=0.1
+RISK_LEVEL=medium  # Options: low, medium, high
+
+# Security Settings
+ENABLE_2FA=true
+API_REQUEST_TIMEOUT=45000
+
+# Monitoring
+ENABLE_PERFORMANCE_METRICS=true
+LOG_LEVEL=info  # Options: debug, info, warning, error
+
+# WebSocket Settings
+USE_WEBSOCKET=true
+WEBSOCKET_RECONNECT_DELAY=1000

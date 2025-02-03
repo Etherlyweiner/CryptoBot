@@ -4,5 +4,25 @@
     "TAKE_PROFIT_PERCENT": 10,
     "MAX_POSITIONS": 3,
     "MAX_TRADES_PER_DAY": 20,
-    "ORDER_TIMEOUT": 45
+    "ORDER_TIMEOUT": 45,
+    "rpc_settings": {
+        "price_update_interval": 1000,
+        "order_book_depth": 20,
+        "websocket_enabled": true,
+        "use_priority_fees": true,
+        "min_priority_fee": 5000,
+        "max_priority_fee": 1000000
+    },
+    "risk_management": {
+        "max_slippage_percent": 1.0,
+        "min_liquidity_required": 100000,
+        "max_exposure_per_token": 0.2,
+        "min_volume_24h": 50000
+    },
+    "performance_optimization": {
+        "batch_requests": true,
+        "cache_ttl_ms": 1000,
+        "use_websocket_feeds": true,
+        "parallel_order_processing": true
+    }
 }
