@@ -49,42 +49,102 @@ class TradingEngine:
                 'inputMint': input_token,
                 'outputMint': output_token,
                 'amount': str(int(amount * 1e9)),  # Convert to lamports
-                'slippageBps': self.config.slippage_bps
+                'slippageBps': self.config.slippage_bps,
+                'onlyDirectRoutes': False,
+                'asLegacyTransaction': True
             }
             
             async with session.get(f"{self.jupiter_quote_api}/quote", params=params) as response:
-                if response.status == 200:
-                    return await response.json()
-                logger.error(f"Failed to get quote: {response.status}")
-                return None
+                if response.status != 200:
+                    error_text = await response.text()
+                    logger.error(f"Failed to get quote: {error_text}")
+                    return None
+                    
+                quote_data = await response.json()
+                logger.info(f"Received quote for {amount} {input_token} -> {output_token}")
+                return quote_data
                 
         except Exception as e:
             logger.error(f"Error getting quote: {str(e)}")
             return None
             
-    async def prepare_swap_transaction(self, quote: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Prepare swap transaction using Jupiter API"""
+    async def execute_swap(self, quote: Dict[str, Any]) -> TradeResult:
+        """Execute a swap transaction using Jupiter"""
+        start_time = datetime.now()
+        input_amount = float(quote['inputAmount']) / 1e9
+        
         try:
-            session = await self._get_session()
-            user_public_key = str(self.wallet.get_public_key())
+            # Verify wallet has enough balance
+            balance = await self.wallet.get_balance()
+            if balance < input_amount + self.config.min_sol_balance:
+                raise TransactionError(f"Insufficient balance: {balance} SOL")
             
-            # Prepare the swap transaction
-            async with session.post(
-                f"{self.jupiter_quote_api}/swap",
-                json={
-                    "quoteResponse": quote,
-                    "userPublicKey": user_public_key,
-                    "wrapUnwrapSOL": True
-                }
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                logger.error(f"Failed to prepare swap: {response.status}")
-                return None
+            # Get transaction data from Jupiter
+            session = await self._get_session()
+            swap_data = {
+                'quoteResponse': quote,
+                'userPublicKey': str(self.wallet._public_key),
+                'wrapUnwrapSOL': True
+            }
+            
+            async with session.post(f"{self.jupiter_quote_api}/swap", json=swap_data) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    logger.error(f"Failed to prepare swap: {error_text}")
+                    return TradeResult(
+                        success=False,
+                        input_amount=input_amount,
+                        output_amount=None,
+                        price=None,
+                        timestamp=start_time,
+                        error=f"Swap preparation failed: {error_text}"
+                    )
                 
+                swap_response = await response.json()
+                
+                # Execute the transaction
+                for attempt in range(self.config.max_retries):
+                    try:
+                        tx_signature = await self.wallet.sign_and_send_transaction(
+                            swap_response['swapTransaction']
+                        )
+                        
+                        # Wait for confirmation
+                        status = await self.wallet.client.confirm_transaction(tx_signature)
+                        if status.value.err:
+                            raise TransactionError(f"Transaction failed: {status.value.err}")
+                        
+                        output_amount = float(quote['outputAmount']) / 1e9
+                        price = output_amount / input_amount if input_amount > 0 else 0
+                        
+                        logger.info(f"Swap successful: {input_amount} -> {output_amount} ({price:.4f})")
+                        return TradeResult(
+                            success=True,
+                            input_amount=input_amount,
+                            output_amount=output_amount,
+                            price=price,
+                            timestamp=start_time,
+                            transaction_id=str(tx_signature)
+                        )
+                        
+                    except Exception as e:
+                        if attempt < self.config.max_retries - 1:
+                            logger.warning(f"Swap attempt {attempt + 1} failed, retrying: {str(e)}")
+                            await asyncio.sleep(self.config.retry_delay)
+                        else:
+                            raise
+                            
         except Exception as e:
-            logger.error(f"Error preparing swap transaction: {str(e)}")
-            return None
+            error_msg = f"Swap execution failed: {str(e)}"
+            logger.error(error_msg)
+            return TradeResult(
+                success=False,
+                input_amount=input_amount,
+                output_amount=None,
+                price=None,
+                timestamp=start_time,
+                error=error_msg
+            )
             
     async def execute_trade(
         self,
@@ -108,48 +168,8 @@ class TradingEngine:
             if not quote:
                 raise TransactionError("Failed to get quote")
                 
-            # Calculate price
-            price = float(quote['outAmount']) / float(quote['inAmount'])
-            
-            # Prepare transaction
-            swap_transaction = await self.prepare_swap_transaction(quote)
-            if not swap_transaction:
-                raise TransactionError("Failed to prepare swap transaction")
-                
-            # Execute with retries
-            for attempt in range(self.config.max_retries):
-                try:
-                    # Simulate first if required
-                    if self.config.simulation_required:
-                        simulation = await self.wallet.client.simulate_transaction(
-                            swap_transaction['swapTransaction']
-                        )
-                        if simulation.value.err:
-                            raise TransactionError(f"Simulation failed: {simulation.value.err}")
-                    
-                    # Sign and send transaction
-                    signed_tx = await self.wallet.sign_transaction(swap_transaction['swapTransaction'])
-                    if not signed_tx:
-                        raise TransactionError("Failed to sign transaction")
-                        
-                    result = await self.wallet.client.send_transaction(signed_tx)
-                    if result.value:
-                        return TradeResult(
-                            success=True,
-                            input_amount=amount,
-                            output_amount=float(quote['outAmount']) / 1e9,
-                            price=price,
-                            timestamp=datetime.utcnow(),
-                            transaction_id=str(result.value)
-                        )
-                        
-                except Exception as e:
-                    if attempt == self.config.max_retries - 1:
-                        raise
-                    logger.warning(f"Retry {attempt + 1}/{self.config.max_retries}: {str(e)}")
-                    await asyncio.sleep(self.config.retry_delay)
-                    
-            raise TransactionError("Max retries exceeded")
+            # Execute swap
+            return await self.execute_swap(quote)
             
         except Exception as e:
             logger.error(f"Trade execution failed: {str(e)}")
@@ -163,6 +183,6 @@ class TradingEngine:
             )
             
     async def close(self):
-        """Clean up resources"""
+        """Close the aiohttp session"""
         if self._session and not self._session.closed:
             await self._session.close()

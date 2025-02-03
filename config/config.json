@@ -5,13 +5,38 @@
         "timeout_ms": 30000
     },
     "wallet": {
-        "address": "4XXRjHQVjkajNA1qco3VYrrXFcG24t7tnCevttEFmpxr1RhZwRJJNPe5CWpxpBVW6AAf1vw575D3MgebFuzyJX77"
+        "address": "7YTZcHQGJuReSDrQVvPCAj8qyxPzaUexHdKcswrumoyc"
+    },
+    "solscan": {
+        "api_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjcmVhdGVkQXQiOjE3Mzg0OTIxOTc1OTUsImVtYWlsIjoiZXRoZXJseWNvbm5lY3RlZDExQHByb3Rvbm1haWwuY29tIiwiYWN0aW9uIjoidG9rZW4tYXBpIiwiYXBpVmVyc2lvbiI6InYyIiwiaWF0IjoxNzM4NDkyMTk3fQ.P_EMG0JRQX4acFFdBZh8qV8VCb9ldn8wQI4IohM8cEg",
+        "version": "v2"
+    },
+    "token_validation": {
+        "min_liquidity_usd": 10000,
+        "min_daily_volume_usd": 5000,
+        "required_verifications": 2,
+        "verification_sources": ["solscan", "dexscreener"],
+        "blacklisted_tokens": [],
+        "cache_duration_minutes": 30,
+        "verification_checks": {
+            "solscan": {
+                "require_verified": true,
+                "min_holder_count": 100
+            },
+            "dexscreener": {
+                "min_liquidity_usd": 10000,
+                "min_daily_volume": 5000,
+                "max_price_impact": 5
+            }
+        }
     },
     "trading": {
         "max_trade_size_sol": 0.1,
         "risk_level": "medium",
         "enable_stop_loss": true,
-        "stop_loss_percentage": 5.0
+        "stop_loss_percentage": 5.0,
+        "max_slippage_percent": 1.0,
+        "min_liquidity_ratio": 5.0
     },
     "monitoring": {
         "enable_performance_metrics": true,

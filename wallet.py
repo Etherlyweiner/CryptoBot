@@ -32,7 +32,14 @@ class PhantomWallet:
     def __init__(self, network: str = None):
         """Initialize Phantom wallet with specified network"""
         self.network = network or os.getenv('NETWORK', 'mainnet-beta')
-        self.rpc_url = os.getenv('RPC_URL', 'https://api.mainnet-beta.solana.com')
+        
+        # Use Helius RPC if available, fallback to public endpoint
+        helius_key = os.getenv('HELIUS_API_KEY')
+        if helius_key:
+            self.rpc_url = f"https://mainnet.helius-rpc.com/?api-key={helius_key}"
+        else:
+            self.rpc_url = os.getenv('RPC_URL', 'https://api.mainnet-beta.solana.com')
+            
         self.commitment = Commitment(os.getenv('COMMITMENT_LEVEL', 'confirmed'))
         self.client = AsyncClient(self.rpc_url, commitment=self.commitment)
         self._public_key = None
@@ -41,68 +48,73 @@ class PhantomWallet:
         self._balance_cache_ttl = 60  # Cache balance for 60 seconds
         self._cached_balance = None
         
+        # Load wallet configuration
+        config_path = os.path.join(os.path.dirname(__file__), 'config', 'config.json')
+        try:
+            with open(config_path) as f:
+                self.config = json.load(f)
+            self._public_key = Pubkey.from_string(self.config['wallet']['address'])
+            logger.info(f"Loaded wallet address: {self._public_key}")
+        except Exception as e:
+            logger.error(f"Failed to load wallet config: {str(e)}")
+            raise WalletError("Failed to initialize wallet configuration")
+        
     @property
     def is_connected(self) -> bool:
         """Check if wallet is connected"""
         return self._connected and self._public_key is not None
         
     async def connect(self) -> bool:
-        """Connect to Phantom wallet via browser extension"""
+        """Connect to wallet and verify connection"""
         try:
-            if self.is_connected:
-                logger.info("Wallet already connected")
-                return True
-                
-            logger.info("Connecting to Phantom wallet...")
-            # This will trigger the Phantom wallet popup in Edge
-            self._public_key = os.getenv('PHANTOM_PUBLIC_KEY', '')
-            if not self._public_key:
-                raise ConnectionError("No public key provided")
-                
-            # Verify the connection by checking the balance
-            balance = await self.get_balance()
-            if balance is None:
-                raise ConnectionError("Failed to verify wallet connection")
+            # Test connection with a version request
+            version = await self.client.get_version()
+            logger.info(f"Connected to Solana node version: {version}")
+            
+            # Verify the account exists
+            account_info = await self.client.get_account_info(self._public_key)
+            if account_info.value is None:
+                raise ConnectionError("Wallet account not found on-chain")
                 
             self._connected = True
-            logger.info(f"Successfully connected to wallet on {self.network}")
+            logger.info(f"Successfully connected wallet: {self._public_key}")
             return True
             
         except Exception as e:
             self._connected = False
-            self._public_key = None
-            logger.error(f"Failed to connect to Phantom wallet: {str(e)}")
-            raise ConnectionError(f"Wallet connection failed: {str(e)}")
-            
-    async def get_balance(self, token_address: Optional[str] = None) -> Optional[float]:
-        """Get wallet balance for SOL or specified token with caching"""
+            logger.error(f"Failed to connect wallet: {str(e)}")
+            raise ConnectionError(f"Failed to connect wallet: {str(e)}")
+        
+    async def get_balance(self) -> float:
+        """Get wallet SOL balance with caching"""
         try:
-            if not self.is_connected:
-                raise WalletError("Wallet not connected")
-                
             current_time = asyncio.get_event_loop().time()
-            if (self._cached_balance is not None and 
-                current_time - self._last_balance_check < self._balance_cache_ttl):
+            
+            # Return cached balance if still valid
+            if self._cached_balance is not None and \
+               (current_time - self._last_balance_check) < self._balance_cache_ttl:
                 return self._cached_balance
+            
+            if not self.is_connected:
+                await self.connect()
+            
+            balance = await self.client.get_balance(self._public_key)
+            if balance.value is None:
+                raise WalletError("Failed to retrieve balance")
                 
-            if token_address is None:
-                # Get SOL balance
-                response = await self.client.get_balance(self.get_public_key())
-                balance = float(response.value) / 1e9  # Convert lamports to SOL
-            else:
-                # Get SPL token balance
-                token_pubkey = Pubkey.from_string(token_address)
-                response = await self.client.get_token_account_balance(token_pubkey)
-                balance = float(response.value.amount) / (10 ** response.value.decimals)
-                
-            self._cached_balance = balance
+            sol_balance = balance.value / 1e9  # Convert lamports to SOL
+            
+            # Update cache
+            self._cached_balance = sol_balance
             self._last_balance_check = current_time
-            return balance
+            
+            logger.info(f"Updated wallet balance: {sol_balance:.4f} SOL")
+            return sol_balance
             
         except Exception as e:
-            logger.error(f"Failed to get balance: {str(e)}")
-            return None
-            
+            logger.error(f"Failed to get wallet balance: {str(e)}")
+            raise WalletError(f"Failed to get wallet balance: {str(e)}")
+
     async def get_token_accounts(self) -> List[Dict[str, Any]]:
         """Get all token accounts owned by the wallet"""
         try:
@@ -110,7 +122,7 @@ class PhantomWallet:
                 raise WalletError("Wallet not connected")
                 
             response = await self.client.get_token_accounts_by_owner(
-                self.get_public_key(),
+                self._public_key,
                 {'programId': Pubkey.from_string('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')}
             )
             
@@ -176,7 +188,7 @@ class PhantomWallet:
                 raise WalletError("Wallet not connected")
                 
             # Verify balance before swap
-            input_balance = await self.get_balance(input_token)
+            input_balance = await self.get_balance()
             if input_balance is None or input_balance < amount:
                 raise TransactionError(f"Insufficient balance for swap: {input_balance} < {amount}")
                 

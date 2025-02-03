@@ -5,418 +5,205 @@ CryptoBot Dashboard Application
 import os
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
-from datetime import datetime
-from bot import TradingBot
-from dotenv import load_dotenv
+from datetime import datetime, timedelta
+import asyncio
 import logging
-import traceback
+from pathlib import Path
+import json
+import sys
+from spl_governance import PublicKey  # Import PublicKey from spl_governance
+
+# Add project root to Python path
+project_root = str(Path(__file__).parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from src.cryptobot.main import CryptoBot
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Load environment variables
-load_dotenv()
 
 # Page configuration
 st.set_page_config(
     page_title="Solana Trading Bot",
-    page_icon="",
+    page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Initialize session state
-if 'bot' not in st.session_state:
-    try:
-        from bot.trading_bot import TradingConfig
-        from bot.wallet.phantom_integration import PhantomWalletManager
-        from bot.security.win_credentials import WindowsCredManager
-        import base64
-        import os
-        import logging
-        
-        # Set up logging
-        logging.basicConfig(level=logging.DEBUG)
-        logger = logging.getLogger(__name__)
-        
-        logger.debug("Starting bot initialization...")
-        
-        # Initialize Phantom Wallet
-        wallet_manager = PhantomWalletManager()
-        logger.debug("Created wallet manager")
-        
-        # Initialize with wallet address
-        success, message = wallet_manager.initialize_with_address("8jqv2AKPGYwojLRHQZLokkYdtHycs8HAVGDMqZUvTByB")
-        if not success:
-            logger.error(f"Failed to initialize wallet: {message}")
-            raise RuntimeError(f"Failed to initialize wallet: {message}")
-        
-        logger.debug("Wallet initialized successfully")
-        
-        # Test wallet connection
-        if not wallet_manager.is_connected():
-            error_msg = "Wallet is not connected"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
-            
-        # Check wallet balance
-        balance = wallet_manager.get_balance()
-        if balance <= 0:
-            error_msg = f"Insufficient wallet balance: {balance} SOL"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
-            
-        logger.info(f"Wallet balance: {balance} SOL")
-        
-        # Create trading config for Solana memecoin trading
-        config = TradingConfig(
-            base_currency='SOL',
-            quote_currency='USDC',
-            position_size=0.2,      # 20% of available balance
-            stop_loss=0.05,         # 5% stop loss
-            take_profit=0.15,       # 15% take profit
-            max_slippage=0.05,      # 5% max slippage
-            network='mainnet-beta', # Solana network
-            max_positions=5,        # Maximum number of concurrent positions
-            max_trades_per_day=10   # Maximum number of trades per day
-        )
-        logger.debug("Created trading config")
-        
-        # Initialize trading bot
-        st.session_state.bot = TradingBot(wallet=wallet_manager, config=config)
-        logger.debug("Created trading bot instance")
-        
-        # Show wallet address
-        wallet_address = wallet_manager.pubkey
-        st.sidebar.success(f"Connected to wallet: {wallet_address}")
-        logger.debug(f"Connected to wallet address: {wallet_address}")
-            
-    except Exception as e:
-        logger.error(f"Failed during wallet/bot initialization: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise RuntimeError(f"Failed to initialize Trading Bot: {str(e)}")
-            
 def render_header():
-    """Render dashboard header"""
-    st.title("Solana Trading Bot Dashboard")
-    st.markdown("Powered by Phantom Wallet & Jupiter DEX")
+    """Render the dashboard header."""
+    st.title("🤖 Solana Trading Bot")
+    st.markdown("---")
+
+def render_wallet_info(bot):
+    """Render wallet information section."""
+    st.header("💰 Wallet Information")
     
-    col1, col2 = st.columns([3, 1])
+    col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("""
-        - Connected to: **{}**
-        - RPC Endpoint: **{}**
-        """.format(
-            os.getenv('NETWORK', 'mainnet-beta'),
-            os.getenv('RPC_URL', 'https://api.mainnet-beta.solana.com')
-        ))
+        if 'wallet_address' in st.session_state:
+            try:
+                # Validate wallet address format
+                PublicKey(st.session_state.wallet_address)
+                st.info(f"Connected Wallet: {st.session_state.wallet_address[:8]}...{st.session_state.wallet_address[-8:]}")
+            except ValueError:
+                st.error("Invalid wallet address format")
+        else:
+            st.warning("No wallet connected")
     
     with col2:
-        if st.button(" Refresh Data"):
+        if 'wallet_balance' in st.session_state:
+            st.metric("Wallet Balance", f"{st.session_state.wallet_balance:.4f} SOL")
+        else:
+            st.warning("Balance not available")
+
+def render_bot_controls(bot):
+    """Render bot control section."""
+    st.header("🎮 Bot Controls")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Start Bot", disabled=st.session_state.get('bot_running', False)):
+            st.session_state.bot_running = True
+            asyncio.create_task(bot.start())
+            st.success("Bot started successfully!")
+    
+    with col2:
+        if st.button("Stop Bot", disabled=not st.session_state.get('bot_running', False)):
+            st.session_state.bot_running = False
+            asyncio.create_task(bot.stop())
+            st.info("Bot stopped successfully!")
+
+def render_market_info():
+    """Render market information section."""
+    st.header("📊 Market Information")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("SOL Price", "$100.00", "2.5%")
+    with col2:
+        st.metric("24h Volume", "$1.2B", "-5%")
+    with col3:
+        st.metric("Market Cap", "$42.5B", "1.2%")
+
+async def update_wallet_balance(bot):
+    """Update wallet balance."""
+    try:
+        logger.info("Starting wallet balance update...")
+        
+        # Validate wallet address
+        try:
+            wallet_address = st.session_state.wallet_address
+            PublicKey(wallet_address)
+            logger.info(f"Wallet address format valid: {wallet_address}")
+        except ValueError as ve:
+            error_msg = f"Invalid wallet address format: {str(ve)}"
+            logger.error(error_msg)
+            st.error(error_msg)
+            return
+        
+        # Ensure connection is established
+        if bot.client is None:
+            logger.info("No client connection, attempting to connect...")
+            connected = await bot.connect()
+            if not connected:
+                error_msg = "Failed to connect to Helius RPC"
+                logger.error(error_msg)
+                st.error(error_msg)
+                return
+            logger.info("Connection established successfully")
+        
+        logger.info("Checking wallet balance...")
+        balance = await bot.check_balance()
+        
+        if balance is not None:
+            sol_balance = balance / 1e9
+            logger.info(f"Setting session state balance to {sol_balance:.4f} SOL")
+            st.session_state.wallet_balance = sol_balance
+            st.session_state.last_balance_update = datetime.now()
+            # Force Streamlit to update
             st.experimental_rerun()
-
-def render_wallet_info():
-    """Render wallet information section."""
-    try:
-        st.subheader("📊 Wallet Information")
-        
-        # Get wallet info
-        wallet = st.session_state.bot.wallet
-        balance = wallet.get_balance()
-        token_balances = wallet.get_token_balances()
-        
-        # Create columns for wallet info
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric(
-                label="SOL Balance",
-                value=f"{balance:.4f} SOL",
-                delta=None
-            )
-            
-            # Add Solscan link
-            explorer_url = wallet.get_explorer_url()
-            st.markdown(f"[View on Solscan]({explorer_url})")
-        
-        with col2:
-            # Show token balances
-            st.markdown("**Token Balances**")
-            if token_balances:
-                for symbol, amount in token_balances.items():
-                    st.write(f"{symbol}: {amount:.4f}")
-            else:
-                st.write("No tokens found")
-        
-        with col3:
-            if st.button("🔄 Refresh Balance"):
-                st.experimental_rerun()
-                
-    except Exception as e:
-        logger.error(f"Error loading wallet info: {str(e)}")
-        logger.error(traceback.format_exc())
-        st.error(f"Error loading wallet info: {str(e)}")
-
-def render_trading_settings():
-    """Render trading settings section."""
-    st.subheader(" Trading Settings")
-    
-    config = st.session_state.bot.config
-    
-    st.markdown(f"""
-    - Base Currency: **{config.base_currency}**
-    - Quote Currency: **{config.quote_currency}**
-    - Position Size: **{config.position_size * 100}%** of available balance
-    - Stop Loss: **{config.stop_loss * 100}%**
-    - Take Profit: **{config.take_profit * 100}%**
-    - Max Slippage: **{config.max_slippage * 100}%**
-    - Max Positions: **{config.max_positions}**
-    - Max Trades Per Day: **{config.max_trades_per_day}**
-    """)
-
-def render_active_trades():
-    """Render active trades section."""
-    st.subheader("Active Trades")
-    
-    try:
-        active_trades = st.session_state.bot.get_active_trades()
-        if active_trades:
-            # Create a DataFrame for better display
-            trades_data = []
-            for trade in active_trades:
-                trades_data.append({
-                    'Symbol': trade.symbol,
-                    'Side': trade.side.upper(),
-                    'Entry Price': f"${trade.entry_price:.4f}",
-                    'Quantity': f"{trade.quantity:.4f}",
-                    'Stop Loss': f"${trade.stop_loss:.4f}",
-                    'Take Profit': f"${trade.take_profit:.4f}",
-                    'Time': trade.timestamp.strftime('%Y-%m-%d %H:%M:%S')
-                })
-            
-            if trades_data:
-                st.dataframe(pd.DataFrame(trades_data))
-            else:
-                st.info("No active trades")
         else:
-            st.info("No active trades")
+            logger.error("Balance returned None")
+            st.error("Unable to retrieve wallet balance")
             
     except Exception as e:
-        logger.error(f"Error loading active trades: {str(e)}")
-        logger.error(traceback.format_exc())
-        st.error(f"Error loading active trades: {str(e)}")
-
-def render_trade_history():
-    """Render trade history section."""
-    st.subheader("Trade History")
-    
-    try:
-        trade_history = st.session_state.bot.get_trade_history()
-        if trade_history:
-            # Create a DataFrame for better display
-            history_data = []
-            for trade in trade_history:
-                history_data.append({
-                    'Symbol': trade.symbol,
-                    'Side': trade.side.upper(),
-                    'Entry Price': f"${trade.entry_price:.4f}",
-                    'Quantity': f"{trade.quantity:.4f}",
-                    'Status': trade.status.upper(),
-                    'Time': trade.timestamp.strftime('%Y-%m-%d %H:%M:%S')
-                })
-            
-            if history_data:
-                st.dataframe(pd.DataFrame(history_data))
-            else:
-                st.info("No trade history")
-        else:
-            st.info("No trade history")
-            
-    except Exception as e:
-        logger.error(f"Error loading trade history: {str(e)}")
-        logger.error(traceback.format_exc())
-        st.error(f"Error loading trade history: {str(e)}")
-
-def render_trading_stats():
-    """Render trading statistics."""
-    st.subheader("Trading Statistics")
-    
-    try:
-        stats = st.session_state.bot.get_trading_stats()
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Total Trades", stats['total_trades'])
-            st.metric("Active Trades", stats['active_trades'])
-            
-        with col2:
-            st.metric("Closed Trades", stats['closed_trades'])
-            st.metric("Cancelled Trades", stats['cancelled_trades'])
-            
-        with col3:
-            st.metric("Trades Today", stats['trades_today'])
-            
-    except Exception as e:
-        logger.error(f"Error loading trading stats: {str(e)}")
-        logger.error(traceback.format_exc())
-        st.error(f"Error loading trading stats: {str(e)}")
+        error_msg = f"Failed to update wallet balance: {str(e)}"
+        logger.error(error_msg)
+        logger.exception("Full stack trace:")
+        st.error(error_msg)
 
 def initialize_bot():
     """Initialize the trading bot."""
-    try:
-        from bot.trading_bot import TradingConfig
-        from bot.wallet.phantom_integration import PhantomWalletManager
-        
-        logger.debug("Starting bot initialization...")
-        
-        # Initialize Phantom Wallet
-        wallet_manager = PhantomWalletManager()
-        logger.debug("Created wallet manager")
-        
-        # Initialize with wallet address
-        success, message = wallet_manager.initialize_with_address("8jqv2AKPGYwojLRHQZLokkYdtHycs8HAVGDMqZUvTByB")
-        if not success:
-            logger.error(f"Failed to initialize wallet: {message}")
-            return False, f"Failed to initialize wallet: {message}"
-        
-        logger.debug("Wallet initialized successfully")
-        
-        # Test wallet connection
-        if not wallet_manager.is_connected():
-            error_msg = "Wallet is not connected"
-            logger.error(error_msg)
-            return False, error_msg
+    if 'bot' not in st.session_state:
+        try:
+            logger.info("Initializing new bot instance...")
+            st.session_state.bot = CryptoBot()
+            st.session_state.bot_running = False
             
-        # Check wallet balance
-        balance = wallet_manager.get_balance()
-        if balance <= 0:
-            error_msg = f"Insufficient wallet balance: {balance} SOL"
-            logger.error(error_msg)
-            return False, error_msg
+            # Load config
+            config_path = Path(project_root) / "config" / "config.json"
+            with open(config_path) as f:
+                config = json.load(f)
             
-        logger.info(f"Wallet balance: {balance} SOL")
-        
-        # Create trading config
-        config = TradingConfig(
-            base_currency='SOL',
-            quote_currency='USDC',
-            position_size=0.2,      # 20% of available balance
-            stop_loss=0.05,         # 5% stop loss
-            take_profit=0.15,       # 15% take profit
-            max_slippage=0.05,      # 5% max slippage
-            network='mainnet-beta',  # Solana network
-            max_positions=5,         # Maximum number of concurrent positions
-            max_trades_per_day=10    # Maximum number of trades per day
-        )
-        logger.debug("Created trading config")
-        
-        # Initialize trading bot
-        st.session_state.bot = TradingBot(wallet=wallet_manager, config=config)
-        logger.debug("Created trading bot instance")
-        
-        # Start the bot
-        success = st.session_state.bot.start()
-        if not success:
-            error_msg = "Failed to start trading bot"
-            logger.error(error_msg)
-            return False, error_msg
+            # Store wallet address
+            st.session_state.wallet_address = config['wallet']['address']
+            logger.info(f"Bot initialized with wallet: {st.session_state.wallet_address}")
             
-        logger.info("Trading bot started successfully")
-        return True, "Bot initialized and started successfully"
-        
-    except Exception as e:
-        error_msg = f"Failed to initialize Trading Bot: {str(e)}"
-        logger.error(error_msg)
-        logger.error(traceback.format_exc())
-        return False, error_msg
+            return st.session_state.bot
+            
+        except Exception as e:
+            error_msg = f"Failed to initialize bot: {str(e)}"
+            logger.error(error_msg)
+            logger.exception("Full stack trace:")
+            st.error(error_msg)
+            return None
+    
+    return st.session_state.bot
 
 def main():
     """Main dashboard function."""
     try:
-        # Initialize bot if not already done
-        if 'bot' not in st.session_state:
-            success, message = initialize_bot()
-            if not success:
-                st.error(message)
-                st.stop()
+        render_header()
         
-        # Wallet connection status
-        wallet = st.session_state.bot.wallet
-        if wallet.is_connected():
-            wallet_address = str(wallet.pubkey)
-            st.sidebar.success(f"Connected to wallet: {wallet_address}")
-            
-            # Add Solscan link
-            explorer_url = wallet.get_explorer_url()
-            st.sidebar.markdown(f"[View on Solscan]({explorer_url})")
-        else:
-            st.sidebar.warning("Wallet not connected")
+        # Initialize bot
+        bot = initialize_bot()
+        if bot is None:
+            st.error("Failed to initialize bot. Please check the configuration and try again.")
+            return
         
-        # Wallet connection button
-        if not wallet.is_connected():
-            if st.button("Connect Phantom Wallet"):
-                with st.spinner("Connecting to Phantom wallet..."):
-                    try:
-                        success, message = wallet.connect()
-                        if success:
-                            wallet_address = str(wallet.pubkey)
-                            st.sidebar.success(f"Connected to wallet: {wallet_address}")
-                            st.experimental_rerun()
-                        else:
-                            st.error(f"Failed to connect: {message}")
-                    except Exception as e:
-                        logger.error(f"Wallet connection error: {str(e)}")
-                        logger.error(traceback.format_exc())
-                        st.error(f"Connection error: {str(e)}")
+        # Create layout
+        render_wallet_info(bot)
+        render_bot_controls(bot)
+        render_market_info()
         
-        # Main dashboard sections
-        if wallet.is_connected():
-            render_wallet_info()
-            render_trading_settings()
-            render_active_trades()
-            render_trade_history()
-            render_trading_stats()
-            
-            # Start/Stop bot
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("Start Trading Bot"):
-                    try:
-                        st.session_state.bot.start()
-                        st.session_state.bot_running = True
-                        st.success("Trading bot started!")
-                    except Exception as e:
-                        logger.error(f"Failed to start bot: {str(e)}")
-                        st.error(f"Failed to start bot: {str(e)}")
-            
-            with col2:
-                if st.button("Stop Trading Bot"):
-                    try:
-                        st.session_state.bot.stop()
-                        st.session_state.bot_running = False
-                        st.info("Trading bot stopped")
-                    except Exception as e:
-                        logger.error(f"Failed to stop bot: {str(e)}")
-                        st.error(f"Failed to stop bot: {str(e)}")
-                        
-            # Show bot status
-            if hasattr(st.session_state, 'bot_running') and st.session_state.bot_running:
-                st.sidebar.success("Bot Status: Running")
-            else:
-                st.sidebar.warning("Bot Status: Stopped")
-                
-        else:
-            st.warning("Please connect your Phantom wallet to access the trading dashboard.")
-            
+        # Initial balance check
+        if 'wallet_balance' not in st.session_state:
+            logger.info("No wallet balance in session, performing initial check...")
+            asyncio.run(update_wallet_balance(bot))
+        
+        # Update balance every 30 seconds if bot is running
+        if st.session_state.get('bot_running', False):
+            now = datetime.now()
+            last_update = st.session_state.get('last_balance_update', now - timedelta(minutes=1))
+            if (now - last_update).total_seconds() > 30:
+                logger.info("Updating wallet balance (30s refresh)...")
+                asyncio.run(update_wallet_balance(bot))
+    
     except Exception as e:
-        logger.error(f"Dashboard error: {str(e)}")
-        logger.error(traceback.format_exc())
-        st.error(f"An error occurred: {str(e)}")
+        error_msg = f"Main loop error: {str(e)}"
+        logger.error(error_msg)
+        logger.exception("Full stack trace:")
+        st.error(error_msg)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
+        logger.error(f"Application error: {str(e)}")
