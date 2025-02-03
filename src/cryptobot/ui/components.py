@@ -6,12 +6,14 @@ import streamlit as st
 import plotly.graph_objects as go
 from typing import Dict, List, Optional
 import pandas as pd
+import os
 
 def render_header():
     """Render the dashboard header with logo and title."""
     col1, col2 = st.columns([1, 4])
     with col1:
-        st.image("assets/logo.png", width=100)
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "assets", "logo.png")
+        st.image(logo_path, width=100)
     with col2:
         st.title("Solana Trading Bot")
         st.markdown("---")

@@ -118,11 +118,11 @@ class MetricsCollector:
                 'portfolio_value': float(self.portfolio_value._value.get())
             },
             'performance': {
-                'avg_execution_time': float(sum(self.trade_execution_time._sum.get())),
-                'avg_rpc_latency': float(sum(self.rpc_latency._sum.get()))
+                'avg_execution_time': float(self.trade_execution_time._sum.get()),
+                'avg_rpc_latency': float(self.rpc_latency._sum.get())
             },
             'errors': {
-                'total': float(sum(self.errors_total._value.values())),
-                'failed_trades': float(sum(self.failed_trades._value.values()))
+                'total': sum(self.errors_total._metrics.values()),
+                'failed_trades': sum(self.failed_trades._metrics.values())
             }
         }

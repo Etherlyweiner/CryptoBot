@@ -1,0 +1,8 @@
+{
+    "SOLANA_NETWORK": "mainnet-beta",
+    "SOLANA_RPC_URL": "https://api.mainnet-beta.solana.com",
+    "BACKUP_RPC_URLS": [
+        "https://solana-mainnet.g.alchemy.com/v2/demo",
+        "https://rpc.ankr.com/solana"
+    ]
+}
