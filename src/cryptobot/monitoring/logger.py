@@ -66,6 +66,9 @@ class BotLogger:
         self.wallet_logger.addHandler(console_handler)
         self.wallet_logger.addHandler(trading_handler)
         self.wallet_logger.addHandler(error_handler)
+        
+        # Set default logger for direct methods
+        self._default_logger = self.trading_logger
     
     def get_trading_logger(self) -> logging.Logger:
         """Get the trading logger."""
@@ -74,6 +77,26 @@ class BotLogger:
     def get_wallet_logger(self) -> logging.Logger:
         """Get the wallet logger."""
         return self.wallet_logger
+    
+    def debug(self, msg: str, *args, **kwargs):
+        """Log a debug message."""
+        self._default_logger.debug(msg, *args, **kwargs)
+    
+    def info(self, msg: str, *args, **kwargs):
+        """Log an info message."""
+        self._default_logger.info(msg, *args, **kwargs)
+    
+    def warning(self, msg: str, *args, **kwargs):
+        """Log a warning message."""
+        self._default_logger.warning(msg, *args, **kwargs)
+    
+    def error(self, msg: str, *args, **kwargs):
+        """Log an error message."""
+        self._default_logger.error(msg, *args, **kwargs)
+    
+    def critical(self, msg: str, *args, **kwargs):
+        """Log a critical message."""
+        self._default_logger.critical(msg, *args, **kwargs)
     
     def archive_logs(self):
         """Archive current logs with timestamp."""

@@ -1,0 +1,4 @@
+{
+    "PROMETHEUS_PORT": 8000,
+    "METRICS_PREFIX": "cryptobot"
+}

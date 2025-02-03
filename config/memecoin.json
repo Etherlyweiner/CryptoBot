@@ -1,0 +1,10 @@
+{
+    "ENABLE_MEMECOIN_TRADING": true,
+    "TRACKED_TOKENS": [
+        "BONK",
+        "WIF",
+        "MYRO"
+    ],
+    "MAX_ALLOCATION_PER_TOKEN": 0.2,
+    "MIN_TOKEN_LIQUIDITY": 100000
+}
