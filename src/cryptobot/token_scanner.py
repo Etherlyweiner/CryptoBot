@@ -1,195 +1,176 @@
-"""TokenScanner class for scanning new token launches"""
+"""Token scanner for monitoring new tokens"""
 import logging
-import asyncio
-from typing import List, Dict, Optional
 import aiohttp
-import time
+import asyncio
+from typing import Dict, List, Optional
 from datetime import datetime, timedelta
-import base58
 
 logger = logging.getLogger(__name__)
 
 class TokenScanner:
+    """Scanner for monitoring new tokens"""
+    
     def __init__(self, config: Dict):
-        """Initialize TokenScanner with configuration"""
+        """Initialize token scanner"""
         self.config = config
-        self.rpc_url = config.get('helius', {}).get('rpc_url') or f"https://rpc.helius.xyz/?api-key={config['helius']['api_key']}"
-        self.max_requests_per_minute = 60
-        self.request_count = 0
-        self.last_request_time = time.time()
         self.session = None
+        self.cache = {}
+        self.last_scan = None
+        
+        # Configure API endpoints
+        self.birdeye_api_key = config.get('birdeye', {}).get('api_key')
+        self.birdeye_url = config.get('birdeye', {}).get('base_url', 'https://public-api.birdeye.so')
+        
+        self.helius_api_key = config.get('helius', {}).get('api_key')
+        self.helius_url = config.get('helius', {}).get('rpc_url')
+        
+        # Configure headers
         self.headers = {
-            'User-Agent': 'Mozilla/5.0',
-            'Accept': 'application/json',
             'Content-Type': 'application/json'
         }
-        
+        if self.birdeye_api_key:
+            self.headers['X-API-KEY'] = self.birdeye_api_key
+    
     async def __aenter__(self):
         """Async context manager enter"""
         await self._get_session()
         return self
-        
+    
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit"""
         await self.close()
-
-    async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create aiohttp session"""
-        if self.session is None or self.session.closed:
-            self.session = aiohttp.ClientSession(headers=self.headers)
-        return self.session
-
-    async def scan_new_tokens(self) -> List[Dict]:
-        """Scan for new token launches"""
+    
+    async def get_token_info(self, token_address: str) -> Optional[Dict]:
+        """Get token information with caching"""
         try:
-            session = await self._get_session()
+            # Check cache first
+            if token_address in self.cache:
+                cache_time, token_info = self.cache[token_address]
+                if datetime.now() - cache_time < timedelta(seconds=self.config.get('cache_duration', 300)):
+                    return token_info
             
-            # Get recent transactions from Helius
-            payload = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "getSignaturesForAddress",
-                "params": [
-                    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",  # Token Program
-                    {
-                        "limit": 100,
-                        "commitment": "confirmed"
-                    }
-                ]
-            }
+            # Get token info from Birdeye
+            birdeye_info = await self._get_birdeye_info(token_address)
+            if not birdeye_info:
+                return None
             
-            async with session.post(self.rpc_url, json=payload) as response:
-                if response.status != 200:
-                    logger.error(f"Failed to fetch signatures: {response.status}")
-                    return []
-                
-                data = await response.json()
-                if 'error' in data:
-                    logger.error(f"RPC error: {data['error']}")
-                    return []
-                
-                signatures = [tx['signature'] for tx in data.get('result', [])]
-                
-                # Get transaction details
-                new_tokens = []
-                for signature in signatures:
-                    # Rate limiting
-                    current_time = time.time()
-                    if current_time - self.last_request_time >= 60:
-                        self.request_count = 0
-                        self.last_request_time = current_time
-                    
-                    if self.request_count >= self.max_requests_per_minute:
-                        await asyncio.sleep(1)
-                        continue
-                    
-                    tx_payload = {
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "getTransaction",
-                        "params": [
-                            signature,
-                            {
-                                "encoding": "jsonParsed",
-                                "maxSupportedTransactionVersion": 0,
-                                "commitment": "confirmed"
-                            }
-                        ]
-                    }
-                    
-                    async with session.post(self.rpc_url, json=tx_payload) as tx_response:
-                        if tx_response.status != 200:
-                            continue
-                        
-                        tx_data = await tx_response.json()
-                        if 'error' in tx_data:
-                            continue
-                        
-                        result = tx_data.get('result', {})
-                        if not result:
-                            continue
-                        
-                        # Look for token creation
-                        meta = result.get('meta', {})
-                        if not meta:
-                            continue
-                            
-                        post_token_balances = meta.get('postTokenBalances', [])
-                        if not post_token_balances:
-                            continue
-                            
-                        for balance in post_token_balances:
-                            mint = balance.get('mint')
-                            if mint:
-                                # Get token info
-                                token_info = await self._get_token_info(mint)
-                                if token_info:
-                                    new_tokens.append({
-                                        'address': mint,
-                                        'creation_slot': result.get('slot'),
-                                        'owner': result.get('transaction', {}).get('message', {}).get('accountKeys', [])[0],
-                                        'signature': signature,
-                                        'decimals': token_info.get('decimals'),
-                                        'supply': token_info.get('supply')
-                                    })
-                    
-                    self.request_count += 1
-                
-                return new_tokens
-                
-        except Exception as e:
-            logger.error(f"Error scanning for new tokens: {str(e)}")
-            return []
-
-    async def _get_token_info(self, token_address: str) -> Optional[Dict]:
-        """Get token information using getAccountInfo"""
-        try:
-            session = await self._get_session()
+            # Get additional info from Helius if available
+            helius_info = await self._get_helius_info(token_address) if self.helius_api_key else {}
             
-            payload = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "getAccountInfo",
-                "params": [
-                    token_address,
-                    {
-                        "encoding": "jsonParsed",
-                        "commitment": "confirmed"
-                    }
-                ]
-            }
+            # Combine info
+            token_info = {**birdeye_info, **helius_info}
             
-            async with session.post(self.rpc_url, json=payload) as response:
-                if response.status != 200:
-                    return None
-                    
-                data = await response.json()
-                if 'error' in data:
-                    return None
-                    
-                result = data.get('result', {})
-                if not result:
-                    return None
-                    
-                account_data = result.get('value', {})
-                if not account_data:
-                    return None
-                    
-                parsed_data = account_data.get('data', {}).get('parsed', {}).get('info', {})
-                if not parsed_data:
-                    return None
-                    
-                return {
-                    'decimals': parsed_data.get('decimals'),
-                    'supply': parsed_data.get('supply'),
-                    'mint_authority': parsed_data.get('mintAuthority'),
-                    'freeze_authority': parsed_data.get('freezeAuthority')
-                }
-                
+            # Cache result
+            self.cache[token_address] = (datetime.now(), token_info)
+            
+            return token_info
+            
         except Exception as e:
             logger.error(f"Error getting token info: {str(e)}")
             return None
-
+    
+    async def _get_birdeye_info(self, token_address: str) -> Optional[Dict]:
+        """Get token information from Birdeye"""
+        try:
+            if not self.session:
+                await self._get_session()
+            
+            url = f"{self.birdeye_url}/public/token_data?address={token_address}"
+            async with self.session.get(url, headers=self.headers) as response:
+                if response.status != 200:
+                    logger.error(f"Request failed with status {response.status}")
+                    return None
+                    
+                data = await response.json()
+                if not data or 'data' not in data:
+                    return None
+                    
+                return {
+                    'price': data['data'].get('price', 0),
+                    'liquidity_usd': data['data'].get('liquidity', 0),
+                    'volume_24h': data['data'].get('volume24h', 0),
+                    'market_cap': data['data'].get('marketCap', 0),
+                    'price_change_24h': data['data'].get('priceChange24h', 0)
+                }
+                
+        except Exception as e:
+            logger.error(f"Error getting Birdeye info: {str(e)}")
+            return None
+    
+    async def _get_helius_info(self, token_address: str) -> Optional[Dict]:
+        """Get token information from Helius"""
+        try:
+            if not self.session:
+                await self._get_session()
+            
+            payload = {
+                "jsonrpc": "2.0",
+                "id": "1",
+                "method": "getTokenSupply",
+                "params": [token_address]
+            }
+            
+            async with self.session.post(self.helius_url, json=payload, headers=self.headers) as response:
+                if response.status != 200:
+                    logger.error(f"Helius request failed with status {response.status}")
+                    return None
+                    
+                data = await response.json()
+                if not data or 'result' not in data:
+                    return None
+                    
+                return {
+                    'total_supply': data['result'].get('value', 0),
+                    'decimals': data['result'].get('decimals', 0)
+                }
+                
+        except Exception as e:
+            logger.error(f"Error getting Helius info: {str(e)}")
+            return None
+    
+    async def scan_new_tokens(self) -> List[Dict]:
+        """Scan for new tokens"""
+        try:
+            if not self.session:
+                await self._get_session()
+            
+            # Get current time
+            now = datetime.now()
+            
+            # If last scan was less than 1 minute ago, skip
+            if self.last_scan and (now - self.last_scan) < timedelta(minutes=1):
+                return []
+                
+            self.last_scan = now
+            
+            # Get new tokens from Birdeye
+            url = f"{self.birdeye_url}/public/new_tokens"
+            async with self.session.get(url, headers=self.headers) as response:
+                if response.status != 200:
+                    logger.error(f"Request failed with status {response.status}")
+                    return []
+                    
+                data = await response.json()
+                if not data or 'data' not in data:
+                    return []
+                    
+                tokens = []
+                for token in data['data']:
+                    token_info = await self.get_token_info(token['address'])
+                    if token_info:
+                        tokens.append(token_info)
+                        
+                return tokens
+                
+        except Exception as e:
+            logger.error(f"Error scanning new tokens: {str(e)}")
+            return []
+    
+    async def _get_session(self):
+        """Get aiohttp session"""
+        if not self.session:
+            self.session = aiohttp.ClientSession()
+    
     async def close(self):
         """Close resources"""
         if self.session and not self.session.closed:

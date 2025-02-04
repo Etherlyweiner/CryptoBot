@@ -2,6 +2,12 @@
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
+import sys
+import os
+
+# Add the src directory to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+
 from cryptobot.ui.dashboard import Dashboard
 
 @pytest.mark.asyncio

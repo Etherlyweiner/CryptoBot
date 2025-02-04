@@ -110,6 +110,18 @@ class MetricsCollector:
     
     def get_metrics(self) -> Dict:
         """Get current metrics as a dictionary."""
+        # Get total errors across all labels
+        total_errors = 0
+        for metric_name, metric in self.errors_total._metrics.items():
+            if hasattr(metric, '_value'):
+                total_errors += float(metric._value.get())
+        
+        # Get total failed trades across all labels
+        total_failed_trades = 0
+        for metric_name, metric in self.failed_trades._metrics.items():
+            if hasattr(metric, '_value'):
+                total_failed_trades += float(metric._value.get())
+        
         return {
             'trades': {
                 'total_executed': float(self.trades_executed._value.get()),
@@ -122,7 +134,7 @@ class MetricsCollector:
                 'avg_rpc_latency': float(self.rpc_latency._sum.get())
             },
             'errors': {
-                'total': sum(self.errors_total._metrics.values()),
-                'failed_trades': sum(self.failed_trades._metrics.values())
+                'total': total_errors,
+                'failed_trades': total_failed_trades
             }
         }

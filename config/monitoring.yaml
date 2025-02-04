@@ -1,0 +1,41 @@
+# Monitoring Configuration
+
+metrics:
+  enabled: true
+  port: 9090
+  path: /metrics
+  collection_interval: 60  # seconds
+
+alerts:
+  enabled: true
+  channels:
+    - type: email
+      enabled: false
+      smtp_server: ""
+      smtp_port: 587
+      username: ""
+      password: ""
+      from_address: ""
+      to_addresses: []
+    
+    - type: discord
+      enabled: false
+      webhook_url: ""
+
+thresholds:
+  cpu_usage: 80  # percent
+  memory_usage: 80  # percent
+  disk_usage: 80  # percent
+  api_latency: 2000  # milliseconds
+  error_rate: 5  # errors per minute
+  
+  trading:
+    max_slippage: 1.0  # percent
+    min_liquidity: 100000  # USD
+    max_position_drawdown: 10  # percent
+    max_daily_loss: 5  # percent of portfolio
+
+logging:
+  level: INFO
+  retention_days: 30
+  max_size: 100  # MB

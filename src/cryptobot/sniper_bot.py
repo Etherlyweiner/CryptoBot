@@ -1,341 +1,130 @@
-"""SniperBot class for quickly capitalizing on new token opportunities"""
+"""Sniper bot for automated trading"""
 import logging
 import asyncio
-from typing import Dict, Optional, List
-import aiohttp
+from typing import Dict, Optional
 from datetime import datetime, timedelta
-
 from .token_scanner import TokenScanner
-from .risk_manager import RiskManager
+from .monitoring.logger import BotLogger
 
 logger = logging.getLogger(__name__)
 
 class SniperBot:
+    """Bot for sniping new token listings"""
+    
     def __init__(self, config: Dict):
-        """Initialize SniperBot with configuration"""
+        """Initialize sniper bot"""
         self.config = config
         self.scanner = TokenScanner(config)
-        self.risk_manager = RiskManager(config.get('risk_management', {}))
-        self.min_liquidity = config.get('token_validation', {}).get('min_liquidity_usd', 50000)
-        self.min_holders = config.get('token_validation', {}).get('min_holders', 100)
-        self.min_volume = config.get('token_validation', {}).get('min_volume_24h', 10000)
-        self.session = None
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Origin': 'https://birdeye.so',
-            'Referer': 'https://birdeye.so/'
-        }
-        if config.get('birdeye', {}).get('api_key'):
-            api_key = config['birdeye']['api_key']
-            if not api_key.startswith('Bearer '):
-                api_key = f"Bearer {api_key}"
-            self.headers['Authorization'] = api_key
+        self.active_positions = {}
+        self.token_cache = {}
+        self.logger = BotLogger()
         
+        # Trading parameters
+        self.min_liquidity = config.get('min_liquidity', 100000)  # Minimum liquidity in USD
+        self.min_market_cap = config.get('min_market_cap', 1000000)  # Minimum market cap in USD
+        self.max_position_size = config.get('max_position_size', 1.0)  # Maximum position size in SOL
+        self.take_profit = config.get('take_profit', 0.1)  # Take profit percentage
+        self.stop_loss = config.get('stop_loss', 0.05)  # Stop loss percentage
+        self.trailing_stop = config.get('trailing_stop', 0.05)  # Trailing stop percentage
+        
+        # Cache settings
+        self.cache_duration = config.get('cache_duration', 300)  # Cache duration in seconds
+    
     async def __aenter__(self):
         """Async context manager enter"""
-        await self._get_session()
         return self
-        
+    
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit"""
-        await self.close()
-
-    async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create aiohttp session"""
-        if self.session is None or self.session.closed:
-            self.session = aiohttp.ClientSession(headers=self.headers)
-        return self.session
-
-    async def _retry_request(self, url: str, method: str = 'GET', data: Dict = None, max_retries: int = 3, delay: float = 2.0) -> Optional[Dict]:
-        """Make a request with retry logic"""
-        session = await self._get_session()
-        
-        for attempt in range(max_retries):
-            try:
-                # Add delay between requests to avoid rate limiting
-                if attempt > 0:
-                    await asyncio.sleep(delay * (attempt + 1))
-                
-                if method == 'GET':
-                    async with session.get(url) as response:
-                        if response.status == 429:  # Rate limit
-                            wait_time = float(response.headers.get('Retry-After', delay * 2))
-                            logger.warning(f"Rate limited, waiting {wait_time} seconds")
-                            await asyncio.sleep(wait_time)
-                            continue
-                            
-                        if response.status == 521 or response.status == 403:  # Cloudflare error
-                            logger.warning(f"Cloudflare error (status {response.status}), retrying...")
-                            await asyncio.sleep(delay * (attempt + 2))
-                            continue
-                            
-                        if response.status != 200:
-                            logger.error(f"Request failed with status {response.status}")
-                            return None
-                            
-                        try:
-                            return await response.json()
-                        except Exception as e:
-                            logger.error(f"Failed to parse JSON response: {str(e)}")
-                            return None
-                            
-                else:  # POST
-                    async with session.post(url, json=data) as response:
-                        if response.status == 429:  # Rate limit
-                            wait_time = float(response.headers.get('Retry-After', delay * 2))
-                            logger.warning(f"Rate limited, waiting {wait_time} seconds")
-                            await asyncio.sleep(wait_time)
-                            continue
-                            
-                        if response.status == 521 or response.status == 403:  # Cloudflare error
-                            logger.warning(f"Cloudflare error (status {response.status}), retrying...")
-                            await asyncio.sleep(delay * (attempt + 2))
-                            continue
-                            
-                        if response.status != 200:
-                            logger.error(f"Request failed with status {response.status}")
-                            return None
-                            
-                        try:
-                            return await response.json()
-                        except Exception as e:
-                            logger.error(f"Failed to parse JSON response: {str(e)}")
-                            return None
-                    
-            except aiohttp.ClientError as e:
-                logger.error(f"Request error: {str(e)}")
-                if attempt == max_retries - 1:
-                    return None
-                await asyncio.sleep(delay * (attempt + 1))
-            except Exception as e:
-                logger.error(f"Unexpected error: {str(e)}")
-                if attempt == max_retries - 1:
-                    return None
-                await asyncio.sleep(delay * (attempt + 1))
-        
-        return None
-
-    async def _analyze_token(self, token_address: str) -> Dict:
-        """Analyze a token for trading opportunity"""
-        try:
-            # Get token info from Birdeye API
-            token_info_url = f"https://public-api.birdeye.so/defi/v2/token/info?address={token_address}&network=solana"
-            token_data = await self._retry_request(token_info_url)
-            
-            if not token_data or not token_data.get('success'):
-                return {
-                    'should_buy': False,
-                    'reason': 'Failed to get token data from Birdeye',
-                    'market_cap': 0,
-                    'liquidity': 0
-                }
-            
-            token_info = token_data.get('data', {})
-            if not token_info:
-                return {
-                    'should_buy': False,
-                    'reason': 'No token data available',
-                    'market_cap': 0,
-                    'liquidity': 0
-                }
-            
-            # Get price and liquidity data
-            price_url = f"https://public-api.birdeye.so/defi/v2/token/price?address={token_address}&network=solana"
-            price_data = await self._retry_request(price_url)
-            
-            if not price_data or not price_data.get('success'):
-                return {
-                    'should_buy': False,
-                    'reason': 'Failed to get price data from Birdeye',
-                    'market_cap': 0,
-                    'liquidity': 0
-                }
-            
-            price_info = price_data.get('data', {})
-            
-            # Extract key metrics with safe type conversion
-            try:
-                supply = float(token_info.get('totalSupply', 0))
-                decimals = int(token_info.get('decimals', 0))
-                price = float(price_info.get('value', 0))
-                liquidity = float(price_info.get('liquidity', 0))
-                volume_24h = float(price_info.get('volume24h', 0))
-                holder_count = int(token_info.get('holderCount', 0))
-                
-                # Calculate market cap
-                market_cap = supply * price / (10 ** decimals) if decimals > 0 else 0
-                
-            except (ValueError, TypeError) as e:
-                logger.error(f"Error converting token metrics: {str(e)}")
-                return {
-                    'should_buy': False,
-                    'reason': 'Invalid token metrics',
-                    'market_cap': 0,
-                    'liquidity': 0
-                }
-            
-            # Basic validation
-            if liquidity < self.min_liquidity:
-                return {
-                    'should_buy': False,
-                    'reason': f'Insufficient liquidity: ${liquidity:,.2f}',
-                    'liquidity': liquidity,
-                    'market_cap': market_cap
-                }
-            
-            if holder_count < self.min_holders:
-                return {
-                    'should_buy': False,
-                    'reason': f'Too few holders: {holder_count}',
-                    'holder_count': holder_count,
-                    'market_cap': market_cap,
-                    'liquidity': liquidity
-                }
-            
-            if volume_24h < self.min_volume:
-                return {
-                    'should_buy': False,
-                    'reason': f'Low 24h volume: ${volume_24h:,.2f}',
-                    'volume_24h': volume_24h,
-                    'market_cap': market_cap,
-                    'liquidity': liquidity
-                }
-            
-            # Check for potential rug pull indicators
-            if liquidity > 0 and market_cap / liquidity > 50:
-                return {
-                    'should_buy': False,
-                    'reason': 'High market cap to liquidity ratio',
-                    'mc_liq_ratio': market_cap / liquidity,
-                    'market_cap': market_cap,
-                    'liquidity': liquidity
-                }
-            
-            # If all checks pass, return positive analysis
-            return {
-                'should_buy': True,
-                'market_cap': market_cap,
-                'liquidity': liquidity,
-                'holder_count': holder_count,
-                'volume_24h': volume_24h,
-                'price': price,
-                'supply': supply,
-                'decimals': decimals,
-                'mc_liq_ratio': market_cap / liquidity if liquidity > 0 else float('inf')
-            }
-            
-        except Exception as e:
-            logger.error(f"Error analyzing token: {str(e)}")
-            return {
-                'should_buy': False,
-                'reason': str(e),
-                'market_cap': 0,
-                'liquidity': 0
-            }
-
-    async def scan_and_analyze(self) -> List[Dict]:
-        """Scan for new tokens and analyze them"""
-        try:
-            new_tokens = await self.scanner.scan_new_tokens()
-            analyzed_tokens = []
-            
-            for token in new_tokens:
-                analysis = await self._analyze_token(token['address'])
-                if analysis['should_buy']:
-                    analyzed_tokens.append({
-                        **token,
-                        'analysis': analysis
-                    })
-            
-            return analyzed_tokens
-            
-        except Exception as e:
-            logger.error(f"Error in scan and analyze: {str(e)}")
-            return []
-
-    async def monitor_position(self, token_address: str, position_id: str, entry_price: float, size: float):
-        """Monitor an open position and manage it according to risk parameters"""
-        try:
-            stop_loss = self.risk_manager.calculate_stop_loss(entry_price, await self.get_token_info(token_address))
-            take_profit = self.risk_manager.calculate_take_profit(entry_price, stop_loss)
-            highest_price = entry_price
-            
-            while True:
-                try:
-                    # Get current price and token info
-                    token_info = await self.get_token_info(token_address)
-                    if not token_info:
-                        logger.error(f"Failed to get token info for {token_address}")
-                        continue
-                        
-                    current_price = token_info.get('price', 0)
-                    if current_price == 0:
-                        logger.error("Invalid price received")
-                        continue
-                        
-                    # Update position tracking
-                    if current_price > highest_price:
-                        highest_price = current_price
-                        # Update trailing stop
-                        new_stop = highest_price * (1 - self.risk_manager.config.trailing_stop_distance)
-                        stop_loss = max(stop_loss, new_stop)
-                        
-                    # Check stop loss
-                    if current_price <= stop_loss:
-                        await self.close_position(token_address, position_id, "Stop loss hit")
-                        break
-                        
-                    # Check take profit
-                    if current_price >= take_profit:
-                        await self.close_position(token_address, position_id, "Take profit hit")
-                        break
-                        
-                    # Add delay between checks
-                    await asyncio.sleep(1)
-                    
-                except Exception as e:
-                    logger.error(f"Error in position monitoring loop: {str(e)}")
-                    await asyncio.sleep(5)  # Longer delay on error
-                    
-        except Exception as e:
-            logger.error(f"Fatal error in position monitoring: {str(e)}")
-            await self.close_position(token_address, position_id, "Error in monitoring")
-
+        pass
+    
     async def get_token_info(self, token_address: str) -> Optional[Dict]:
-        """Get token information with caching and retry logic"""
-        cache_key = f"token_info_{token_address}"
-        
-        # Check cache first
-        if hasattr(self, '_cache') and cache_key in self._cache:
-            cached_data = self._cache[cache_key]
-            if datetime.now() - cached_data['timestamp'] < timedelta(seconds=30):
-                return cached_data['data']
-                
-        # Fetch new data
-        url = f"https://public-api.birdeye.so/public/token_data?address={token_address}"
-        response = await self._retry_request(url)
-        
-        if response and 'data' in response:
-            # Cache the result
-            if not hasattr(self, '_cache'):
-                self._cache = {}
-            self._cache[cache_key] = {
-                'data': response['data'],
-                'timestamp': datetime.now()
-            }
-            return response['data']
+        """Get token information with caching"""
+        try:
+            # Check cache first
+            if token_address in self.token_cache:
+                cache_time, token_info = self.token_cache[token_address]
+                if datetime.now() - cache_time < timedelta(seconds=self.cache_duration):
+                    return token_info
             
-        return None
-
-    async def close_position(self, token_address: str, position_id: str, reason: str):
-        """Close an open position"""
-        # Implement position closing logic here
-        logger.info(f"Closing position {position_id} for {token_address} due to {reason}")
-
-    async def close(self):
-        """Close resources"""
-        if self.session and not self.session.closed:
-            await self.session.close()
-            self.session = None
+            # Get fresh data
+            async with self.scanner as scanner:
+                token_info = await scanner.get_token_info(token_address)
+                if token_info:
+                    self.token_cache[token_address] = (datetime.now(), token_info)
+                return token_info
+                
+        except Exception as e:
+            logger.error(f"Error getting token info: {str(e)}")
+            return None
+    
+    async def check_position(self, token_address: str, entry_price: float, current_price: float) -> str:
+        """Check position status and determine action"""
+        try:
+            # Calculate price change
+            price_change = (current_price - entry_price) / entry_price
+            
+            # Initialize position tracking if needed
+            if token_address not in self.active_positions:
+                self.active_positions[token_address] = {
+                    'entry_price': entry_price,
+                    'highest_price': current_price,
+                    'trailing_stop_active': False
+                }
+            
+            position = self.active_positions[token_address]
+            
+            # Check take profit first
+            if price_change >= self.take_profit:
+                return 'sell'
+            
+            # Check stop loss
+            if price_change <= -self.stop_loss:
+                return 'sell'
+            
+            # Update highest price and trailing stop status
+            if current_price > position['highest_price']:
+                position['highest_price'] = current_price
+                # Activate trailing stop if we're in profit
+                if current_price > entry_price:
+                    position['trailing_stop_active'] = True
+            
+            # Check trailing stop only if active
+            if position['trailing_stop_active']:
+                trailing_stop_price = position['highest_price'] * (1 - self.trailing_stop)
+                if current_price < trailing_stop_price:
+                    return 'sell'
+            
+            return 'hold'
+            
+        except Exception as e:
+            logger.error(f"Error checking position: {str(e)}")
+            return 'error'
+    
+    async def validate_position(self, token_address: str, position_size: float) -> bool:
+        """Validate if position meets trading criteria"""
+        try:
+            token_info = await self.get_token_info(token_address)
+            if not token_info:
+                return False
+            
+            # Check liquidity
+            if token_info.get('liquidity_usd', 0) < self.min_liquidity:
+                logger.info(f"Insufficient liquidity: {token_info.get('liquidity_usd')}")
+                return False
+            
+            # Check market cap
+            if token_info.get('market_cap', 0) < self.min_market_cap:
+                logger.info(f"Insufficient market cap: {token_info.get('market_cap')}")
+                return False
+            
+            # Check position size
+            if position_size > self.max_position_size:
+                logger.info(f"Position size too large: {position_size}")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error validating position: {str(e)}")
+            return False

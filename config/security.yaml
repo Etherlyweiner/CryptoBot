@@ -1,0 +1,32 @@
+# Security Configuration
+
+api:
+  rate_limit:
+    enabled: true
+    requests_per_minute: 60
+    burst_size: 10
+  
+  authentication:
+    enabled: true
+    jwt_secret: ""  # Will be auto-generated
+    token_expiry: 3600  # seconds
+    
+  cors:
+    enabled: true
+    allowed_origins: ["http://localhost:8501"]  # Streamlit default port
+    
+firewall:
+  enabled: true
+  allowed_ips: []  # Will be populated from ip_whitelist.txt
+  blocked_ips: []
+  
+ssl:
+  enabled: false  # Enable in production
+  cert_file: ""
+  key_file: ""
+  
+wallet:
+  auto_lock: true
+  lock_timeout: 300  # seconds
+  max_failed_attempts: 3
+  encryption_algorithm: "AES-256-GCM"

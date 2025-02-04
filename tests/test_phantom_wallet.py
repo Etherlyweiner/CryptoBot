@@ -1,38 +1,49 @@
+"""
+Tests for Phantom wallet integration
+"""
+
 import pytest
 import pytest_asyncio
-from bot.wallet.phantom_integration import PhantomWalletManager
-from solders.keypair import Keypair
-import win32cred
+import sys
+import os
+
+# Add the src directory to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+
+from cryptobot.trading.phantom import PhantomWallet
+import os
 
 class TestPhantomIntegration:
     @pytest_asyncio.fixture
-    async def wallet_manager(self):
-        manager = PhantomWalletManager()
-        test_keypair = Keypair.from_secret_key(b'\x00' * 32)  # Initialize with a valid secret key
-        await manager.initialize_wallet(bytes(test_keypair))
-        yield manager
-        await manager.close()
-
+    async def wallet(self):
+        """Create a test wallet instance."""
+        os.environ['PHANTOM_WALLET_ADDRESS'] = 'DummyWalletAddress'
+        os.environ['SOLANA_RPC_URL'] = 'https://api.devnet.solana.com'
+        
+        wallet = PhantomWallet()
+        await wallet.initialize()
+        yield wallet
+        
     @pytest.mark.asyncio
-    async def test_keypair_loading(self, wallet_manager):
-        await wallet_manager.ensure_initialized()
-        assert wallet_manager.keypair is not None
-
+    async def test_initialization(self, wallet):
+        """Test wallet initialization."""
+        assert wallet is not None
+        assert isinstance(wallet, PhantomWallet)
+        
     @pytest.mark.asyncio
-    async def test_keypair_storage(self, wallet_manager):
-        cred = win32cred.CredRead('PhantomBotKey', win32cred.CRED_TYPE_GENERIC)
-        stored_bytes = bytes(cred.CredentialBlob)
-        assert stored_bytes == bytes(wallet_manager.keypair)
-
+    async def test_token_accounts(self, wallet):
+        """Test getting token accounts."""
+        accounts = await wallet.get_token_accounts()
+        assert isinstance(accounts, list)
+        
     @pytest.mark.asyncio
-    async def test_balance_check(self, wallet_manager):
-        balance = await wallet_manager.get_balance()
-        assert isinstance(balance, float)
-        assert balance >= 0.0
-
+    async def test_memecoin_balances(self, wallet):
+        """Test getting memecoin balances."""
+        balances = await wallet.get_memecoin_balances()
+        assert isinstance(balances, dict)
+        
     @pytest.mark.asyncio
-    async def test_connection_management(self, wallet_manager):
-        await wallet_manager.close()
-        assert wallet_manager.client.is_closed()
-        await wallet_manager.connect()
-        assert not wallet_manager.client.is_closed()
+    async def test_memecoin_prices(self, wallet):
+        """Test getting memecoin prices."""
+        prices = await wallet.get_memecoin_prices()
+        assert isinstance(prices, dict)

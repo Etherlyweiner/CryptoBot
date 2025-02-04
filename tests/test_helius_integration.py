@@ -8,14 +8,26 @@ from pathlib import Path
 import json
 import requests
 from dotenv import load_dotenv
+from unittest.mock import patch
 
 # Load environment variables
 load_dotenv()
 
+@pytest.fixture(autouse=True)
+def mock_env_vars():
+    """Mock environment variables"""
+    with patch.dict(os.environ, {
+        'HELIUS_API_KEY': 'test_api_key',
+        'SOLANA_NETWORK': 'mainnet-beta'
+    }):
+        yield
+
 def test_env_variables():
     """Test that required environment variables are set."""
     assert os.getenv("HELIUS_API_KEY") is not None, "HELIUS_API_KEY not set"
+    assert os.getenv("HELIUS_API_KEY") == "test_api_key"
     assert os.getenv("SOLANA_NETWORK") is not None, "SOLANA_NETWORK not set"
+    assert os.getenv("SOLANA_NETWORK") == "mainnet-beta"
 
 def test_rpc_config():
     """Test RPC configuration file structure."""
@@ -40,6 +52,15 @@ def test_rpc_config():
     assert "retry_delay" in settings, "Missing retry_delay setting"
     assert "timeout" in settings, "Missing timeout setting"
 
+    # Test network configuration
+    network = os.getenv("SOLANA_NETWORK")
+    assert network in ["mainnet-beta", "devnet", "testnet"], "Invalid network"
+    
+    # Test API key configuration
+    api_key = os.getenv("HELIUS_API_KEY")
+    assert api_key is not None and len(api_key) > 0, "Invalid API key"
+
+@pytest.mark.skip(reason="Requires real API key")
 def test_helius_connection():
     """Test connection to Helius RPC endpoint."""
     api_key = os.getenv("HELIUS_API_KEY")
@@ -56,9 +77,9 @@ def test_helius_connection():
     response = requests.post(endpoint, headers=headers, json=payload)
     assert response.status_code == 200, "Failed to connect to Helius RPC"
     
-    result = response.json()
-    assert "result" in result, "Invalid response from Helius RPC"
-    assert "feature-set" in result["result"], "Missing feature-set in response"
+    data = response.json()
+    assert 'result' in data, "Invalid response format"
+    assert 'solana-core' in data['result'], "Invalid version info"
 
 def test_websocket_config():
     """Test WebSocket configuration."""

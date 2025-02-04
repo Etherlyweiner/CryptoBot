@@ -1,22 +1,27 @@
 """
-Tests for the server module.
+Tests for the dashboard components.
 """
 
 import pytest
 from pathlib import Path
-from bot.server import get_static_dir
+import sys
+import os
 
-def test_static_dir_exists():
-    """Test that the static directory exists."""
-    static_dir = get_static_dir()
-    assert static_dir.exists(), f"Static directory not found at {static_dir}"
-    assert static_dir.is_dir(), f"{static_dir} is not a directory"
+# Add the src directory to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
-def test_static_dir_has_required_files():
-    """Test that the static directory contains required files."""
-    static_dir = get_static_dir()
-    required_files = ['trading.html', 'wallet.js', 'jupiter.js', 'dexscreener.js']
-    
+from cryptobot.ui.components import render_header
+from cryptobot.ui.dashboard import Dashboard
+
+def test_assets_dir_exists():
+    """Test that the assets directory exists."""
+    assets_dir = Path(os.path.dirname(os.path.dirname(__file__))) / "assets"
+    assert assets_dir.exists(), f"Assets directory not found at {assets_dir}"
+    assert assets_dir.is_dir(), f"{assets_dir} is not a directory"
+
+def test_assets_dir_has_required_files():
+    """Test that the assets directory has the required files."""
+    assets_dir = Path(os.path.dirname(os.path.dirname(__file__))) / "assets"
+    required_files = ["logo.png"]
     for file in required_files:
-        assert (static_dir / file).exists(), f"Required file {file} not found"
-        assert (static_dir / file).is_file(), f"{file} is not a file"
+        assert (assets_dir / file).exists(), f"Required file {file} not found in assets directory"

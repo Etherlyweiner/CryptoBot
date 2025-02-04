@@ -193,13 +193,13 @@ class RiskManager:
             volatility = token_info.get('volatility_24h', 0.5)  # Default to 50% if not available
             
             # Base position size on wallet balance
-            base_size = wallet_balance * 0.1  # Start with 10% of wallet
+            base_size = min(wallet_balance * 0.1, self.config.max_position_size)  # Start with 10% of wallet
             
-            # Adjust based on volatility
-            volatility_factor = 1 - (volatility / 2)  # Reduce size as volatility increases
+            # Adjust based on volatility (reduce size as volatility increases)
+            volatility_factor = max(0.2, 1.0 - volatility)  # Minimum 20% of base size
             position_size = base_size * volatility_factor
             
-            # Cap at max position size
+            # Ensure we don't exceed max position size
             return min(position_size, self.config.max_position_size)
             
         except Exception as e:
@@ -213,13 +213,16 @@ class RiskManager:
             atr = token_info.get('atr_24h', volatility * entry_price)  # Use ATR if available
             
             # Base stop loss on volatility and ATR
-            stop_distance = max(
+            stop_distance = min(
                 atr * 1.5,  # 1.5x ATR
                 entry_price * volatility * 0.5,  # Half of daily volatility
-                entry_price * self.config.emergency_stop_loss  # Minimum stop loss
+                entry_price * self.config.emergency_stop_loss  # Maximum stop loss
             )
             
-            return entry_price - stop_distance
+            # Ensure stop loss is not more than emergency stop loss
+            stop_price = entry_price - stop_distance
+            min_price = entry_price * (1 - self.config.emergency_stop_loss)
+            return max(stop_price, min_price)
             
         except Exception as e:
             logger.error(f"Error calculating stop loss: {str(e)}")
@@ -240,17 +243,22 @@ class RiskManager:
 
     def validate_trade(self, price: float, liquidity: float, market_cap: float) -> bool:
         """Validate if a trade meets risk management criteria"""
-        # Check if position size is too large relative to liquidity
-        position_size = self.calculate_position_size({'liquidity_usd': liquidity}, 1000)
-        if position_size < 10:  # Minimum trade size of $10
-            return False
+        try:
+            # Check if liquidity is sufficient
+            if liquidity < self.config.min_liquidity_usd:
+                return False
+                
+            # Check if market cap is reasonable (not too small or too large)
+            if market_cap < 100000 or market_cap > 1000000000:
+                return False
+                
+            # Calculate potential position size
+            position_size = self.calculate_position_size({'liquidity_usd': liquidity}, 1000)
+            if position_size < 0.01:  # Minimum trade size of 0.01 SOL
+                return False
+                
+            return True
             
-        # Check if market cap is reasonable (not too small or too large)
-        if market_cap < 100000 or market_cap > 1000000000:
+        except Exception as e:
+            logger.error(f"Error validating trade: {str(e)}")
             return False
-            
-        # Check if liquidity is sufficient
-        if liquidity < 50000:  # Minimum liquidity of $50k
-            return False
-            
-        return True

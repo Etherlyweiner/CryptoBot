@@ -3,23 +3,30 @@ Trading Engine for CryptoBot
 """
 
 import asyncio
+import logging
 from typing import Dict, List, Optional
 from .phantom import PhantomWallet
 from .market_scanner import MarketScanner
 from ..monitoring.logger import BotLogger
 from ..config.manager import ConfigurationManager
 
+logger = logging.getLogger(__name__)
+
 class TradingEngine:
     """Main trading engine for executing trades."""
     
-    def __init__(self):
-        """Initialize trading engine."""
+    def __init__(self, config: Dict):
+        """Initialize trading engine"""
+        self.config = config
+        self.wallet = None
         self.logger = BotLogger()
-        self.config = ConfigurationManager()
-        self.wallet = PhantomWallet()
         self.market_scanner = MarketScanner()
         self.active_trades = {}
         self.trading_enabled = True
+        
+    def set_wallet(self, wallet: PhantomWallet):
+        """Set the wallet for trading"""
+        self.wallet = wallet
         
     async def initialize(self) -> bool:
         """Initialize trading engine components."""

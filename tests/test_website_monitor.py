@@ -1,165 +1,66 @@
 """
-Unit tests for website monitor
+Unit tests for metrics collection
 """
 
 import unittest
-from unittest.mock import Mock, patch
-import asyncio
-from datetime import datetime
-from website_monitor import WebsiteMonitor
-from database import Database
+from unittest.mock import Mock
+import time
+import sys
+import os
 
-class TestWebsiteMonitor(unittest.TestCase):
+# Add the src directory to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+
+from cryptobot.monitoring.metrics import MetricsCollector
+
+class TestMetricsCollection(unittest.TestCase):
     def setUp(self):
         """Set up test environment"""
-        self.mock_db = Mock(spec=Database)
-        self.monitor = WebsiteMonitor(self.mock_db)
+        self.metrics = MetricsCollector()
+        
+    def test_singleton_pattern(self):
+        """Test that MetricsCollector follows singleton pattern"""
+        metrics2 = MetricsCollector()
+        self.assertIs(self.metrics, metrics2)
     
-    def test_calculate_momentum(self):
-        """Test momentum calculation"""
-        # Test case 1: High volume relative to market cap
-        token_data = {
-            'price': 1.0,
-            'volume_24h': 1000000,
-            'market_cap': 1000000,
-            'listed_on_major_exchange': True
-        }
-        score = self.monitor._calculate_momentum(token_data)
-        self.assertGreaterEqual(score, 0.8)
+    def test_trade_metrics(self):
+        """Test trade metrics collection"""
+        # Record a trade
+        self.metrics.record_trade(100.0, 0.5)  # 100 SOL trade taking 0.5 seconds
         
-        # Test case 2: Low volume relative to market cap
-        token_data = {
-            'price': 1.0,
-            'volume_24h': 10000,
-            'market_cap': 1000000,
-            'listed_on_major_exchange': False
-        }
-        score = self.monitor._calculate_momentum(token_data)
-        self.assertLessEqual(score, 0.3)
-        
-        # Test case 3: Missing data
-        token_data = {
-            'price': 0,
-            'volume_24h': 0,
-            'market_cap': 0
-        }
-        score = self.monitor._calculate_momentum(token_data)
-        self.assertEqual(score, 0.0)
+        # Get metrics and verify
+        metrics = self.metrics.get_metrics()
+        self.assertGreater(metrics['trades']['total_executed'], 0)
+        self.assertGreater(metrics['trades']['total_volume'], 0)
     
-    def test_calculate_social_score(self):
-        """Test social score calculation"""
-        # Test case 1: All social elements present
-        token_data = {
-            'website': 'https://example.com',
-            'whitepaper_url': 'https://example.com/whitepaper',
-            'social_links': {
-                'twitter': 'https://twitter.com/example',
-                'telegram': 'https://t.me/example'
-            }
-        }
-        score = self.monitor._calculate_social_score(token_data)
-        self.assertEqual(score, 1.0)
+    def test_error_metrics(self):
+        """Test error metrics collection"""
+        # Record an error
+        self.metrics.record_error("TEST_ERROR")
         
-        # Test case 2: Some social elements missing
-        token_data = {
-            'website': 'https://example.com',
-            'social_links': {}
-        }
-        score = self.monitor._calculate_social_score(token_data)
-        self.assertEqual(score, 0.3)
-        
-        # Test case 3: No social elements
-        token_data = {
-            'website': '',
-            'social_links': {}
-        }
-        score = self.monitor._calculate_social_score(token_data)
-        self.assertEqual(score, 0.0)
+        # Get metrics and verify
+        metrics = self.metrics.get_metrics()
+        self.assertGreater(metrics['errors']['total'], 0)
     
-    def test_calculate_risk_score(self):
-        """Test risk score calculation"""
-        # Test case 1: Low risk
-        token_data = {
-            'website': 'https://example.com',
-            'social_links': {'twitter': 'https://twitter.com/example'},
-            'liquidity': 200000
-        }
-        score = self.monitor._calculate_risk_score(token_data)
-        self.assertLessEqual(score, 0.2)
+    def test_performance_metrics(self):
+        """Test performance metrics collection"""
+        # Record RPC request
+        start_time = time.time() - 0.5  # Simulate request that started 0.5 seconds ago
+        self.metrics.record_rpc_request(start_time)
         
-        # Test case 2: Medium risk
-        token_data = {
-            'website': 'https://example.com',
-            'social_links': {},
-            'liquidity': 50000
-        }
-        score = self.monitor._calculate_risk_score(token_data)
-        self.assertGreaterEqual(score, 0.5)
-        
-        # Test case 3: High risk
-        token_data = {
-            'website': '',
-            'social_links': {},
-            'liquidity': 10000
-        }
-        score = self.monitor._calculate_risk_score(token_data)
-        self.assertGreaterEqual(score, 0.8)
+        # Get metrics and verify
+        metrics = self.metrics.get_metrics()
+        self.assertGreater(metrics['performance']['avg_rpc_latency'], 0)
     
-    @patch('website_monitor.BeautifulSoup')
-    def test_parse_coinmarketcap(self, mock_bs):
-        """Test CoinMarketCap parsing"""
-        # Mock BeautifulSoup response
-        mock_soup = Mock()
-        mock_bs.return_value = mock_soup
+    def test_portfolio_metrics(self):
+        """Test portfolio metrics collection"""
+        # Update portfolio
+        self.metrics.update_portfolio(1000.0, 5)  # 1000 SOL portfolio with 5 positions
         
-        # Mock table row
-        mock_row = Mock()
-        mock_row.select_one.side_effect = lambda x: Mock(
-            text=Mock(
-                strip=Mock(return_value={
-                    '.symbol': 'TEST',
-                    '.name': 'Test Token',
-                    '.price': '$1.00',
-                    '.market-cap': '$1000000',
-                    '.chain': 'ETH'
-                }.get(x, ''))
-            )
-        )
-        mock_soup.select.return_value = [mock_row]
-        
-        # Test parsing
-        tokens = asyncio.run(self.monitor._parse_coinmarketcap('<html></html>'))
-        self.assertEqual(len(tokens), 1)
-        self.assertEqual(tokens[0]['symbol'], 'TEST')
-        self.assertEqual(tokens[0]['name'], 'Test Token')
-        self.assertEqual(tokens[0]['price'], 1.0)
-        self.assertEqual(tokens[0]['market_cap'], 1000000)
-        self.assertEqual(tokens[0]['chain'], 'ETH')
-    
-    def test_process_new_tokens(self):
-        """Test token processing"""
-        tokens = [{
-            'symbol': 'TEST',
-            'name': 'Test Token',
-            'price': 1.0,
-            'market_cap': 1000000,
-            'chain': 'ETH',
-            'website': 'https://example.com',
-            'social_links': {'twitter': 'https://twitter.com/example'},
-            'liquidity': 200000
-        }]
-        
-        # Test processing
-        asyncio.run(self.monitor._process_new_tokens('coinmarketcap', tokens))
-        
-        # Verify database calls
-        self.mock_db.store_new_token.assert_called_once()
-        self.mock_db.store_token_analysis.assert_called_once()
-        
-        # Verify alert generation for high opportunity
-        analysis_call = self.mock_db.store_token_analysis.call_args[0][0]
-        if analysis_call['opportunity_score'] >= 0.7:
-            self.mock_db.store_alert.assert_called_once()
+        # Get metrics and verify
+        metrics = self.metrics.get_metrics()
+        self.assertEqual(metrics['trades']['portfolio_value'], 1000.0)
+        self.assertEqual(metrics['trades']['active_positions'], 5)
 
 if __name__ == '__main__':
     unittest.main()
