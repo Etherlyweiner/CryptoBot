@@ -185,3 +185,72 @@ class RiskManager:
         except Exception as e:
             logger.error(f"Error calculating position size: {str(e)}")
             return 0
+            
+    def calculate_position_size(self, token_info: Dict, wallet_balance: float) -> float:
+        """Calculate optimal position size based on volatility and wallet balance"""
+        try:
+            # Get volatility from token info
+            volatility = token_info.get('volatility_24h', 0.5)  # Default to 50% if not available
+            
+            # Base position size on wallet balance
+            base_size = wallet_balance * 0.1  # Start with 10% of wallet
+            
+            # Adjust based on volatility
+            volatility_factor = 1 - (volatility / 2)  # Reduce size as volatility increases
+            position_size = base_size * volatility_factor
+            
+            # Cap at max position size
+            return min(position_size, self.config.max_position_size)
+            
+        except Exception as e:
+            logger.error(f"Error calculating position size: {str(e)}")
+            return 0.0
+            
+    def calculate_stop_loss(self, entry_price: float, token_info: Dict) -> float:
+        """Calculate dynamic stop loss based on volatility"""
+        try:
+            volatility = token_info.get('volatility_24h', 0.5)
+            atr = token_info.get('atr_24h', volatility * entry_price)  # Use ATR if available
+            
+            # Base stop loss on volatility and ATR
+            stop_distance = max(
+                atr * 1.5,  # 1.5x ATR
+                entry_price * volatility * 0.5,  # Half of daily volatility
+                entry_price * self.config.emergency_stop_loss  # Minimum stop loss
+            )
+            
+            return entry_price - stop_distance
+            
+        except Exception as e:
+            logger.error(f"Error calculating stop loss: {str(e)}")
+            return entry_price * (1 - self.config.emergency_stop_loss)
+            
+    def calculate_take_profit(self, entry_price: float, stop_loss: float) -> float:
+        """Calculate take profit based on risk:reward ratio"""
+        try:
+            # Calculate risk in price terms
+            risk = entry_price - stop_loss
+            
+            # Use 2:1 reward:risk ratio minimum
+            return entry_price + (risk * 2)
+            
+        except Exception as e:
+            logger.error(f"Error calculating take profit: {str(e)}")
+            return entry_price * (1 + self.config.profit_lock_threshold)
+
+    def validate_trade(self, price: float, liquidity: float, market_cap: float) -> bool:
+        """Validate if a trade meets risk management criteria"""
+        # Check if position size is too large relative to liquidity
+        position_size = self.calculate_position_size({'liquidity_usd': liquidity}, 1000)
+        if position_size < 10:  # Minimum trade size of $10
+            return False
+            
+        # Check if market cap is reasonable (not too small or too large)
+        if market_cap < 100000 or market_cap > 1000000000:
+            return False
+            
+        # Check if liquidity is sufficient
+        if liquidity < 50000:  # Minimum liquidity of $50k
+            return False
+            
+        return True

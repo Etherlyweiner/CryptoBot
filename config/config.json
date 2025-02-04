@@ -13,6 +13,10 @@
         "api_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjcmVhdGVkQXQiOjE3Mzg0OTIxOTc1OTUsImVtYWlsIjoiZXRoZXJseWNvbm5lY3RlZDExQHByb3Rvbm1haWwuY29tIiwiYWN0aW9uIjoidG9rZW4tYXBpIiwiYXBpVmVyc2lvbiI6InYyIiwiaWF0IjoxNzM4NDkyMTk3fQ.P_EMG0JRQX4acFFdBZh8qV8VCb9ldn8wQI4IohM8cEg",
         "version": "v2"
     },
+    "birdeye": {
+        "api_key": "5c2d878f1e584978a6d65d5f07f27adf",
+        "network": "mainnet-beta"
+    },
     "token_validation": {
         "min_liquidity_usd": 50000,
         "min_holders": 100,
