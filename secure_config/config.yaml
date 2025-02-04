@@ -2,7 +2,11 @@
 api_keys:
   helius:
     key: "74d34f4f-e88d-4da1-8178-01ef5749372c"
-    rpc_url: "https://mainnet.helius-rpc.com/"
+    rpc_url: "https://staked.helius-rpc.com?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c"  # Using staked RPC URL
+    standard_rpc: "https://mainnet.helius-rpc.com/?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c"
+    staked_rpc: "https://staked.helius-rpc.com?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c"
+    ws_url: "wss://mainnet.helius-rpc.com/?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c"
+    api_base: "https://api.helius.xyz/v0"
   birdeye:
     key: "YOUR_BIRDEYE_API_KEY"
     base_url: "https://public-api.birdeye.so"
