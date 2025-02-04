@@ -1,9 +1,15 @@
-"""
-CryptoBot - A Solana trading bot with DexScreener integration
-"""
+"""Bot package initialization."""
 
-__version__ = '0.1.0'
+from .trading_bot import TradingBot
+from .wallet.phantom_integration import PhantomWalletManager
+from .api.helius_client import HeliusClient
+from .api.solscan_client import SolscanClient
+from .api.token_program_client import TokenProgramClient
 
-from .trading_bot import TradingBot, TradingConfig
-
-__all__ = ['TradingBot', 'TradingConfig']
+__all__ = [
+    'TradingBot',
+    'PhantomWalletManager',
+    'HeliusClient',
+    'SolscanClient',
+    'TokenProgramClient'
+]

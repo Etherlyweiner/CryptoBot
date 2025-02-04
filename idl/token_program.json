@@ -1,0 +1,195 @@
+{
+    "version": "0.1.0",
+    "name": "token_program",
+    "instructions": [
+        {
+            "name": "initializeMint",
+            "accounts": [
+                {
+                    "name": "mint",
+                    "isMut": true,
+                    "isSigner": true
+                },
+                {
+                    "name": "rent",
+                    "isMut": false,
+                    "isSigner": false
+                }
+            ],
+            "args": [
+                {
+                    "name": "decimals",
+                    "type": "u8"
+                }
+            ]
+        },
+        {
+            "name": "initializeAccount",
+            "accounts": [
+                {
+                    "name": "account",
+                    "isMut": true,
+                    "isSigner": true
+                },
+                {
+                    "name": "mint",
+                    "isMut": false,
+                    "isSigner": false
+                },
+                {
+                    "name": "owner",
+                    "isMut": false,
+                    "isSigner": false
+                },
+                {
+                    "name": "rent",
+                    "isMut": false,
+                    "isSigner": false
+                }
+            ],
+            "args": []
+        },
+        {
+            "name": "transfer",
+            "accounts": [
+                {
+                    "name": "source",
+                    "isMut": true,
+                    "isSigner": false
+                },
+                {
+                    "name": "destination",
+                    "isMut": true,
+                    "isSigner": false
+                },
+                {
+                    "name": "authority",
+                    "isMut": false,
+                    "isSigner": true
+                }
+            ],
+            "args": [
+                {
+                    "name": "amount",
+                    "type": "u64"
+                }
+            ]
+        }
+    ],
+    "accounts": [
+        {
+            "name": "Mint",
+            "type": {
+                "kind": "struct",
+                "fields": [
+                    {
+                        "name": "mintAuthority",
+                        "type": "publicKey"
+                    },
+                    {
+                        "name": "supply",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "decimals",
+                        "type": "u8"
+                    },
+                    {
+                        "name": "isInitialized",
+                        "type": "bool"
+                    },
+                    {
+                        "name": "freezeAuthority",
+                        "type": "publicKey"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "Account",
+            "type": {
+                "kind": "struct",
+                "fields": [
+                    {
+                        "name": "mint",
+                        "type": "publicKey"
+                    },
+                    {
+                        "name": "owner",
+                        "type": "publicKey"
+                    },
+                    {
+                        "name": "amount",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "delegate",
+                        "type": "publicKey"
+                    },
+                    {
+                        "name": "state",
+                        "type": "u8"
+                    },
+                    {
+                        "name": "isNative",
+                        "type": "bool"
+                    },
+                    {
+                        "name": "delegatedAmount",
+                        "type": "u64"
+                    },
+                    {
+                        "name": "closeAuthority",
+                        "type": "publicKey"
+                    }
+                ]
+            }
+        }
+    ],
+    "types": [
+        {
+            "name": "AccountState",
+            "type": {
+                "kind": "enum",
+                "variants": [
+                    {
+                        "name": "Uninitialized"
+                    },
+                    {
+                        "name": "Initialized"
+                    },
+                    {
+                        "name": "Frozen"
+                    }
+                ]
+            }
+        }
+    ],
+    "errors": [
+        {
+            "code": 0,
+            "name": "NotRentExempt",
+            "msg": "Lamport balance below rent-exempt threshold"
+        },
+        {
+            "code": 1,
+            "name": "InsufficientFunds",
+            "msg": "Insufficient funds"
+        },
+        {
+            "code": 2,
+            "name": "InvalidMint",
+            "msg": "Invalid Mint"
+        },
+        {
+            "code": 3,
+            "name": "MintMismatch",
+            "msg": "Account not associated with this Mint"
+        },
+        {
+            "code": 4,
+            "name": "OwnerMismatch",
+            "msg": "Owner does not match"
+        }
+    ]
+}

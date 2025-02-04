@@ -6,53 +6,117 @@ from solders.rpc.responses import GetBalanceResp
 from solders.pubkey import Pubkey
 from bot.security.win_credentials import WindowsCredManager
 import logging
-import binascii
 import traceback
+from typing import Dict, Any, Optional, Tuple
 import requests
+from ..api.solscan_client import SolscanClient
+import binascii
 import json
 import os
-from typing import Optional, Dict, Any, Tuple
-import base58
 from solana.rpc.types import TxOpts
 from solders.rpc.errors import InvalidParamsMessage
 from solana.rpc.commitment import Confirmed
 import time
+import base58
 
 logger = logging.getLogger(__name__)
 
 class PhantomWalletManager:
     """Manages Phantom wallet integration."""
     
-    SOLSCAN_API_BASE = "https://api.solscan.io"
-    SOLSCAN_ACCOUNT_ENDPOINT = "/v2/account/{address}"
     SOLANA_RPC = "https://api.mainnet-beta.solana.com"  # Default public RPC
     BACKUP_RPCS = [
         "https://solana-mainnet.g.alchemy.com/v2/demo",  # Alchemy demo endpoint
         "https://api.mainnet-beta.solana.com",  # Solana default
         "https://rpc.ankr.com/solana",  # Ankr public endpoint
     ]
-    DEFAULT_WALLET = "8jqv2AKPGYwojLRHQZLokkYdtHycs8HAVGDMqZUvTByB"  # Your wallet address
     
-    def __init__(self):
+    def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None):
         """Initialize wallet manager."""
-        logger.debug("=== BEGIN WALLET MANAGER INITIALIZATION ===")
+        self.config = config
+        self.logger = logger or logging.getLogger(__name__)
+        self._solscan_api_key = config.get('api_keys', {}).get('solscan', {}).get('key')
+        self.SOLSCAN_API_BASE = config.get('api_keys', {}).get('solscan', {}).get('base_url', 'https://api.solscan.io')
+        self.DEFAULT_WALLET = config.get('wallet', {}).get('address', '8jqv2AKPGYwojLRHQZLokkYdtHycs8HAVGDMqZUvTByB')
+        
+        # Initialize Solscan client
+        self.solscan = SolscanClient(
+            api_key=self._solscan_api_key,
+            base_url=self.SOLSCAN_API_BASE
+        )
+        
+        self.logger.debug("=== BEGIN WALLET MANAGER INITIALIZATION ===")
         try:
             self._pubkey = None
             self._is_connected = False
-            self.client = Client(self.SOLANA_RPC)
-            logger.debug(f"Initialized wallet manager with RPC: {self.SOLANA_RPC}")
+            self._rpc_client = Client(self.SOLANA_RPC)
+            self.logger.debug(f"Initialized wallet manager with RPC: {self.SOLANA_RPC}")
             self.cred_manager = WindowsCredManager()
             self._keypair = None
-            self._solscan_api_key = os.getenv('SOLSCAN_API_KEY')
-            logger.debug("PhantomWalletManager basic initialization complete")
+            self.logger.debug("PhantomWalletManager basic initialization complete")
             
             # Try to initialize with default wallet
-            self.initialize_with_address(self.DEFAULT_WALLET)
+            self._initialize_default_wallet()
+            
         except Exception as e:
-            logger.error(f"Failed to initialize PhantomWalletManager: {str(e)}")
+            self.logger.error(f"Error initializing wallet manager: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            raise
+            
+    def _initialize_default_wallet(self):
+        """Initialize wallet with default address."""
+        try:
+            logger.debug(f"Initializing wallet with address: {self.DEFAULT_WALLET}")
+            
+            # Validate address format
+            try:
+                self._pubkey = Pubkey.from_string(self.DEFAULT_WALLET)
+                logger.debug(f"Public key created: {self._pubkey}")
+            except ValueError as e:
+                logger.error(f"Invalid wallet address format: {str(e)}")
+                return False, f"Invalid wallet address format: {str(e)}"
+
+            # Test RPC connection with fallback
+            success, message = self._test_rpc_connection()
+            if not success:
+                logger.error(f"All RPC connections failed: {message}")
+                return False, f"RPC connection failed: {message}"
+            logger.debug("RPC connection successful")
+
+            # Test Solscan connection
+            success, message = self._test_solscan_connection()
+            if not success:
+                logger.warning(f"Solscan connection failed: {message}")
+                # Continue anyway as we can fallback to RPC
+            else:
+                logger.debug("Solscan connection successful")
+
+            # Check if account exists and get initial balance
+            try:
+                balance_response = self._safe_rpc_call(self._rpc_client.get_balance, self._pubkey)
+                if not balance_response or not hasattr(balance_response, 'value'):
+                    logger.error("Failed to get initial balance")
+                    return False, "Failed to get initial balance"
+                
+                balance = float(balance_response.value) / 10**9
+                logger.info(f"Initial wallet balance: {balance} SOL")
+                
+                if balance <= 0:
+                    logger.warning("Wallet has zero balance")
+                    return False, "Wallet has zero balance. Please fund the wallet before proceeding."
+                
+            except Exception as e:
+                logger.error(f"Failed to check initial balance: {str(e)}")
+                return False, f"Failed to check initial balance: {str(e)}"
+
+            self._is_connected = True
+            logger.info(f"Wallet initialized successfully. Address: {self.DEFAULT_WALLET}")
+            return True, "Wallet initialized successfully"
+
+        except Exception as e:
+            logger.error(f"Wallet initialization failed: {str(e)}")
             logger.error(traceback.format_exc())
-            raise RuntimeError(f"Wallet initialization failed: {str(e)}")
-        logger.debug("=== END WALLET MANAGER INITIALIZATION ===")
+            return False, f"Wallet initialization failed: {str(e)}"
 
     def initialize_with_address(self, address: str) -> Tuple[bool, str]:
         """Initialize wallet with a public address."""
@@ -84,7 +148,7 @@ class PhantomWalletManager:
 
             # Check if account exists and get initial balance
             try:
-                balance_response = self._safe_rpc_call(self.client.get_balance, self._pubkey)
+                balance_response = self._safe_rpc_call(self._rpc_client.get_balance, self._pubkey)
                 if not balance_response or not hasattr(balance_response, 'value'):
                     logger.error("Failed to get initial balance")
                     return False, "Failed to get initial balance"
@@ -127,7 +191,7 @@ class PhantomWalletManager:
                 response = test_client.get_slot()
                 if response is not None:
                     logger.info(f"Successfully connected to RPC {rpc}")
-                    self.client = test_client  # Update client to working RPC
+                    self._rpc_client = test_client  # Update client to working RPC
                     self.SOLANA_RPC = rpc     # Update RPC URL
                     return True, f"Connected to {rpc}"
             except Exception as e:
@@ -137,63 +201,24 @@ class PhantomWalletManager:
         return False, "All RPC endpoints failed"
 
     def _test_solscan_connection(self) -> Tuple[bool, str]:
-        """Test Solscan API connection."""
+        """Test connection to Solscan API."""
         try:
-            headers = {'Accept': 'application/json'}
-            if self._solscan_api_key:
-                headers['token'] = self._solscan_api_key
-
-            # Test with default wallet address
-            url = f"{self.SOLSCAN_API_BASE}{self.SOLSCAN_ACCOUNT_ENDPOINT.format(address=self.DEFAULT_WALLET)}"
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            
-            logger.debug("Solscan connection successful")
-            return True, "Solscan connection successful"
+            if self.solscan.test_connection():
+                self.logger.debug("Solscan connection successful")
+                return True, "Solscan connection successful"
+            return False, "Solscan connection test failed"
         except Exception as e:
             error_msg = f"Solscan connection failed: {str(e)}"
-            logger.error(error_msg)
-            logger.error(traceback.format_exc())
+            self.logger.error(error_msg)
+            self.logger.error(traceback.format_exc())
             return False, error_msg
-
+            
     def _get_solscan_account_info(self, address: str) -> Optional[Dict[str, Any]]:
         """Get account information from Solscan."""
         try:
-            headers = {'Accept': 'application/json'}
-            if self._solscan_api_key:
-                headers['token'] = self._solscan_api_key
-
-            url = f"{self.SOLSCAN_API_BASE}{self.SOLSCAN_ACCOUNT_ENDPOINT.format(address=address)}"
-            logger.debug(f"Requesting Solscan info for address: {address}")
-            logger.debug(f"Request URL: {url}")
-            logger.debug(f"Request headers: {headers}")
-            
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code != 200:
-                logger.error(f"Solscan API error: {response.status_code} - {response.text}")
-                return None
-                
-            data = response.json()
-            logger.debug(f"Solscan account info: {json.dumps(data, indent=2)}")
-            
-            if 'status' in data and data['status'] != 200:
-                logger.error(f"Solscan API returned error status: {data}")
-                return None
-                
-            return data
-            
-        except requests.exceptions.Timeout:
-            logger.error("Solscan API request timed out")
-            return None
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Network error with Solscan API: {str(e)}")
-            return None
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Solscan response: {str(e)}")
-            return None
+            return self.solscan.get_account_info(address)
         except Exception as e:
-            logger.error(f"Failed to get Solscan account info: {str(e)}")
-            logger.error(traceback.format_exc())
+            self.logger.error(f"Failed to get Solscan account info: {str(e)}")
             return None
 
     def _safe_rpc_call(self, fn, *args):
@@ -227,7 +252,7 @@ class PhantomWalletManager:
             logger.debug(f"Checking balance for {address}")
             
             # Try RPC first as it's more reliable
-            balance_response = self._safe_rpc_call(self.client.get_balance, self._pubkey)
+            balance_response = self._safe_rpc_call(self._rpc_client.get_balance, self._pubkey)
             if balance_response and hasattr(balance_response, 'value'):
                 balance = float(balance_response.value) / 10**9
                 logger.info(f"Got balance from RPC: {balance} SOL")
@@ -284,7 +309,7 @@ class PhantomWalletManager:
                 return True, "Already connected"
             
             # Initialize with default wallet address
-            return self.initialize_with_address(self.DEFAULT_WALLET)
+            return self._initialize_default_wallet()
                 
         except Exception as e:
             error_msg = f"Connection failed: {str(e)}"

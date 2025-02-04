@@ -1,440 +1,291 @@
-"""Main trading bot implementation."""
+"""Trading bot implementation."""
 
 import asyncio
 import logging
-from typing import Dict, List, Optional, Tuple
-from decimal import Decimal
-import json
-from datetime import datetime
-from dataclasses import dataclass, field
+from typing import Dict, Any, Optional
 import aiohttp
-import traceback
-from solders.keypair import Keypair
-from solders.pubkey import Pubkey
-from solana.rpc.async_api import AsyncClient
-from solana.transaction import Transaction
-import base58
+from .api.helius_client import HeliusClient
+from .api.solscan_client import SolscanClient
+from .wallet.phantom_integration import PhantomWalletManager
 
-from bot.wallet.phantom_integration import PhantomWalletManager
-from cache_manager import cache_manager, market_cache
-from metrics_collector import metrics
-from system_health import health_checker
-from security_manager import security_manager
-
-logger = logging.getLogger('TradingBot')
-
-JUPITER_API_BASE = "https://price.jup.ag/v4"
-SOLSCAN_API_BASE = "https://public-api.solscan.io/market"
-
-@dataclass
-class Trade:
-    """Represents an active trade."""
-    token_address: str  # Solana token mint address
-    entry_price_sol: float
-    quantity_tokens: float
-    side: str  # 'buy' or 'sell'
-    timestamp: datetime = field(default_factory=datetime.now)
-    stop_loss_sol: Optional[float] = None
-    take_profit_sol: Optional[float] = None
-    status: str = 'open'  # 'open', 'closed', 'cancelled'
-    transaction_signature: Optional[str] = None
-
-@dataclass
-class TradingConfig:
-    """Trading configuration."""
-    position_size_sol: float
-    stop_loss_percent: float
-    take_profit_percent: float
-    max_slippage_percent: float
-    network: str = 'mainnet-beta'
-    max_positions: int = 5
-    max_trades_per_day: int = 10
-    order_timeout: int = 30
+logger = logging.getLogger(__name__)
 
 class TradingBot:
-    """Solana memecoin trading bot implementation."""
+    """Trading bot for monitoring and executing trades on Solana."""
     
-    def __init__(self,
-                 wallet: PhantomWalletManager,
-                 config: TradingConfig):
-        """Initialize trading bot."""
+    def __init__(self, wallet: PhantomWalletManager, config: Dict[str, Any]):
+        """Initialize trading bot.
+        
+        Args:
+            wallet: Initialized wallet manager
+            config: Configuration dictionary
+        """
         self.wallet = wallet
         self.config = config
-        self.is_running = False
-        self.positions = {}
-        self.active_trades: List[Trade] = []
-        self.trades_today = 0
-        self.last_trade_reset = datetime.now().date()
-        self._trading_task = None
-        self.MAX_RETRIES = 5
-        self.RETRY_DELAY = 5
+        self.session = None
+        self.websocket = None
+        self.running = False
+        self.reconnect_delay = 1  # Initial reconnect delay in seconds
+        self.max_reconnect_delay = 60  # Maximum reconnect delay in seconds
         
-        # Initialize Solana client
-        self.solana = AsyncClient(f"https://api.{self.config.network}.solana.com")
+        # Initialize API clients
+        self.helius = HeliusClient(
+            api_key=config['api_keys']['helius']['key'],
+            rpc_url=config['api_keys']['helius']['rpc_url']
+        )
+        self.solscan = SolscanClient(
+            api_key=config['api_keys']['solscan']['key']
+        )
         
-        # Initialize metrics
-        self.trade_count = metrics.trade_count
-        self.position_value = metrics.position_value
-        self.pnl = metrics.pnl
-        
-        # Connect wallet if not already connected
-        if not self.wallet.is_connected():
-            success, message = self.wallet.connect()
-            if not success:
-                logger.error(f"Failed to connect wallet: {message}")
-                raise RuntimeError(f"Failed to connect wallet: {message}")
-        
-        logger.debug("TradingBot initialized with config: %s", config)
-    
-    def get_sol_balance(self) -> float:
-        """Get SOL balance in wallet."""
-        try:
-            return self.wallet.get_sol_balance()
-        except Exception as e:
-            logger.error(f"Failed to get SOL balance: {str(e)}")
-            return 0.0
-    
-    def get_token_balance(self, token_address: str) -> float:
-        """Get token balance for a specific SPL token."""
-        try:
-            return self.wallet.get_token_balance(token_address)
-        except Exception as e:
-            logger.error(f"Failed to get token balance: {str(e)}")
-            return 0.0
-    
-    async def _get_token_price(self, token_address: str) -> Optional[float]:
-        """Get current price of token in SOL."""
-        try:
-            # Get price from Jupiter API
-            url = f"{JUPITER_API_BASE}/price?ids={token_address}&vsToken=SOL"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        if data.get("data") and token_address in data["data"]:
-                            return float(data["data"][token_address]["price"])
-            return None
-        except Exception as e:
-            logger.error(f"Error getting token price: {str(e)}")
-            return None
-    
-    async def _get_trending_tokens(self) -> List[str]:
-        """Get list of trending token addresses."""
-        try:
-            # Get trending tokens from Solscan
-            url = f"{SOLSCAN_API_BASE}/token/list?sortBy=volume&direction=desc&limit=20"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return [token["address"] for token in data["data"] 
-                               if self._is_valid_token(token)]
-            return []
-        except Exception as e:
-            logger.error(f"Error getting trending tokens: {str(e)}")
-            return []
-    
-    def _is_valid_token(self, token_data: Dict) -> bool:
-        """Check if token meets our criteria."""
-        try:
-            # Basic validation criteria
-            min_volume = 1000  # Minimum 1000 SOL daily volume
-            min_holders = 100  # Minimum 100 holders
-            
-            return (
-                float(token_data.get("volume24h", 0)) >= min_volume and
-                int(token_data.get("holder", 0)) >= min_holders and
-                token_data.get("verified", False)  # Only verified tokens
-            )
-        except Exception as e:
-            logger.error(f"Error validating token: {str(e)}")
-            return False
-    
-    async def _analyze_token(self, token_address: str) -> bool:
-        """Analyze token for potential trade."""
-        try:
-            # Get token data from Solscan
-            url = f"{SOLSCAN_API_BASE}/token/{token_address}"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        return False
-                    
-                    data = await response.json()
-                    
-                    # Analysis criteria
-                    price_change_24h = float(data.get("priceChange24h", 0))
-                    volume_24h = float(data.get("volume24h", 0))
-                    market_cap = float(data.get("marketCap", 0))
-                    
-                    # Trading signals
-                    signals = {
-                        "price_dip": price_change_24h < -10,  # Price dropped more than 10%
-                        "high_volume": volume_24h > 5000,     # Volume > 5000 SOL
-                        "reasonable_mcap": 1000 <= market_cap <= 100000,  # Market cap between 1K-100K SOL
-                        "sufficient_liquidity": await self._check_liquidity(token_address)
-                    }
-                    
-                    # Log analysis
-                    logger.info(f"Token analysis for {token_address}:")
-                    logger.info(f"Price change 24h: {price_change_24h}%")
-                    logger.info(f"Volume 24h: {volume_24h} SOL")
-                    logger.info(f"Market cap: {market_cap} SOL")
-                    logger.info(f"Signals: {signals}")
-                    
-                    return all(signals.values())
-                    
-        except Exception as e:
-            logger.error(f"Error analyzing token: {str(e)}")
-            return False
-    
-    async def _check_liquidity(self, token_address: str) -> bool:
-        """Check if token has sufficient liquidity."""
-        try:
-            # Get liquidity info from Jupiter
-            url = f"{JUPITER_API_BASE}/liquidity?tokens={token_address}"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        liquidity = float(data.get("data", {}).get(token_address, {}).get("liquidityInSol", 0))
-                        return liquidity >= 100  # Minimum 100 SOL liquidity
-            return False
-        except Exception as e:
-            logger.error(f"Error checking liquidity: {str(e)}")
-            return False
-    
-    async def _execute_trade(self, token_address: str):
-        """Execute a trade using Jupiter."""
-        try:
-            # Get quote from Jupiter
-            amount_in = self.config.position_size_sol * 10**9  # Convert to lamports
-            
-            # Get quote
-            quote_url = f"{JUPITER_API_BASE}/quote"
-            params = {
-                "inputMint": "So11111111111111111111111111111111111111112",  # SOL mint
-                "outputMint": token_address,
-                "amount": str(int(amount_in)),
-                "slippageBps": int(self.config.max_slippage_percent * 100)
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.get(quote_url, params=params) as response:
-                    if response.status != 200:
-                        logger.error("Failed to get quote")
-                        return
-                    
-                    quote_data = await response.json()
-                    
-                    # Get transaction data
-                    swap_url = f"{JUPITER_API_BASE}/swap"
-                    swap_data = {
-                        "quoteResponse": quote_data,
-                        "userPublicKey": self.wallet.public_key,
-                        "wrapUnwrapSOL": True
-                    }
-                    
-                    async with session.post(swap_url, json=swap_data) as swap_response:
-                        if swap_response.status != 200:
-                            logger.error("Failed to prepare swap transaction")
-                            return
-                        
-                        swap_result = await swap_response.json()
-                        
-                        # Sign and send transaction
-                        tx = Transaction.deserialize(base58.b58decode(swap_result["swapTransaction"]))
-                        signed_tx = await self.wallet.sign_transaction(tx)
-                        
-                        # Send transaction
-                        result = await self.solana.send_transaction(signed_tx)
-                        signature = result.value
-                        
-                        # Create trade record
-                        price = float(quote_data["outAmount"]) / float(quote_data["inAmount"])
-                        quantity = float(quote_data["outAmount"]) / 10**9  # Convert from smallest unit
-                        
-                        trade = Trade(
-                            token_address=token_address,
-                            entry_price_sol=price,
-                            quantity_tokens=quantity,
-                            side="buy",
-                            stop_loss_sol=price * (1 - self.config.stop_loss_percent),
-                            take_profit_sol=price * (1 + self.config.take_profit_percent),
-                            transaction_signature=signature
-                        )
-                        
-                        self.active_trades.append(trade)
-                        self.trades_today += 1
-                        
-                        logger.info(f"Trade executed: {trade}")
-                        
-        except Exception as e:
-            logger.error(f"Error executing trade: {str(e)}")
-    
-    async def _close_position(self, trade: Trade, reason: str):
-        """Close a position using Jupiter."""
-        try:
-            # Get quote for selling
-            amount_in = int(trade.quantity_tokens * 10**9)  # Convert to smallest unit
-            
-            # Get quote
-            quote_url = f"{JUPITER_API_BASE}/quote"
-            params = {
-                "inputMint": trade.token_address,
-                "outputMint": "So11111111111111111111111111111111111111112",  # SOL mint
-                "amount": str(amount_in),
-                "slippageBps": int(self.config.max_slippage_percent * 100)
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.get(quote_url, params=params) as response:
-                    if response.status != 200:
-                        logger.error("Failed to get quote for closing position")
-                        return
-                    
-                    quote_data = await response.json()
-                    
-                    # Get transaction data
-                    swap_url = f"{JUPITER_API_BASE}/swap"
-                    swap_data = {
-                        "quoteResponse": quote_data,
-                        "userPublicKey": self.wallet.public_key,
-                        "wrapUnwrapSOL": True
-                    }
-                    
-                    async with session.post(swap_url, json=swap_data) as swap_response:
-                        if swap_response.status != 200:
-                            logger.error("Failed to prepare closing transaction")
-                            return
-                        
-                        swap_result = await swap_response.json()
-                        
-                        # Sign and send transaction
-                        tx = Transaction.deserialize(base58.b58decode(swap_result["swapTransaction"]))
-                        signed_tx = await self.wallet.sign_transaction(tx)
-                        
-                        # Send transaction
-                        result = await self.solana.send_transaction(signed_tx)
-                        signature = result.value
-                        
-                        # Update trade record
-                        trade.status = "closed"
-                        trade.transaction_signature = signature
-                        
-                        logger.info(f"Position closed: {trade}, Reason: {reason}")
-                        
-        except Exception as e:
-            logger.error(f"Error closing position: {str(e)}")
-    
     async def start_trading(self):
         """Start the trading bot."""
-        if self.is_running:
-            logger.warning("Trading bot is already running")
-            return
-        
-        self.is_running = True
-        self._trading_task = asyncio.create_task(self._trading_loop())
-        logger.info("Trading bot started")
-    
+        try:
+            self.running = True
+            self.session = aiohttp.ClientSession()
+            
+            # Initialize connections
+            logger.info("Testing API connections...")
+            if not await self._test_connections():
+                logger.error("API connection tests failed")
+                return
+                
+            logger.info("Validating configuration...")
+            if not self._validate_config():
+                logger.error("Configuration validation failed")
+                return
+                
+            logger.info("Setting up monitoring...")
+            if not await self._setup_monitoring():
+                logger.error("Monitoring setup failed")
+                return
+                
+            logger.info("Trading bot initialized successfully")
+            
+            # Start monitoring mempool
+            while self.running:
+                try:
+                    await self._monitor_mempool()
+                except Exception as e:
+                    logger.error(f"Mempool monitoring error: {str(e)}", exc_info=True)
+                    if self.running:
+                        await self._handle_reconnect()
+            
+        except Exception as e:
+            logger.error(f"Error in trading bot: {str(e)}", exc_info=True)
+            raise
+            
+        finally:
+            await self.stop_trading()
+            
     async def stop_trading(self):
         """Stop the trading bot."""
-        if not self.is_running:
-            logger.warning("Trading bot is not running")
-            return
+        logger.info("Stopping trading bot...")
+        self.running = False
         
-        self.is_running = False
-        if self._trading_task:
-            self._trading_task.cancel()
+        if self.websocket:
             try:
-                await self._trading_task
-            except asyncio.CancelledError:
-                pass
+                await self.websocket.close()
+            except Exception as e:
+                logger.error(f"Error closing websocket: {str(e)}")
+                
+        if self.session:
+            try:
+                await self.session.close()
+            except Exception as e:
+                logger.error(f"Error closing session: {str(e)}")
+                
         logger.info("Trading bot stopped")
-    
-    async def _trading_loop(self):
-        """Main trading loop."""
-        while self.is_running:
-            try:
-                # Check if we can make more trades today
-                current_date = datetime.now().date()
-                if current_date > self.last_trade_reset:
-                    self.trades_today = 0
-                    self.last_trade_reset = current_date
-                
-                if self.trades_today >= self.config.max_trades_per_day:
-                    logger.info("Maximum daily trades reached")
-                    await asyncio.sleep(60)  # Check again in a minute
-                    continue
-                
-                # Check active positions
-                await self._check_positions()
-                
-                # Look for new trading opportunities
-                await self._find_trading_opportunities()
-                
-                await asyncio.sleep(10)  # Wait before next iteration
-                
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Error in trading loop: {str(e)}")
-                logger.debug(traceback.format_exc())
-                await asyncio.sleep(30)  # Wait longer on error
-    
-    async def _check_positions(self):
-        """Check and manage open positions."""
-        for trade in self.get_active_trades():
-            try:
-                current_price = await self._get_token_price(trade.token_address)
-                if current_price is None:
-                    continue
-                
-                # Check stop loss
-                if (trade.stop_loss_sol and 
-                    current_price <= trade.stop_loss_sol):
-                    await self._close_position(trade, 'stop_loss')
-                
-                # Check take profit
-                elif (trade.take_profit_sol and 
-                      current_price >= trade.take_profit_sol):
-                    await self._close_position(trade, 'take_profit')
-                
-            except Exception as e:
-                logger.error(f"Error checking position {trade.token_address}: {str(e)}")
-    
-    async def _find_trading_opportunities(self):
-        """Find new trading opportunities."""
+        
+    async def _handle_reconnect(self):
+        """Handle reconnection with exponential backoff."""
+        logger.info(f"Attempting reconnection in {self.reconnect_delay} seconds...")
+        await asyncio.sleep(self.reconnect_delay)
+        
+        # Exponential backoff
+        self.reconnect_delay = min(self.reconnect_delay * 2, self.max_reconnect_delay)
+        
+    async def _monitor_mempool(self):
+        """Monitor mempool for interesting transactions."""
         try:
-            # Get trending tokens from Jupiter/Solscan
-            trending_tokens = await self._get_trending_tokens()
+            async def handle_mempool_update(data: Dict[str, Any]):
+                try:
+                    logger.debug(f"Received mempool update: {data}")
+                    if self._is_interesting_transaction(data):
+                        token_address = self._extract_token_address(data)
+                        if token_address:
+                            await self._analyze_token_opportunity(token_address)
+                except Exception as e:
+                    logger.error(f"Error handling mempool update: {str(e)}", exc_info=True)
             
-            for token in trending_tokens:
-                # Analyze token for potential trade
-                if await self._analyze_token(token):
-                    # Execute trade if analysis is positive
-                    await self._execute_trade(token)
-        
+            # Reset reconnect delay on successful connection
+            self.reconnect_delay = 1
+            
+            # Start mempool subscription
+            logger.info("Starting mempool subscription...")
+            await self.helius.subscribe_mempool(handle_mempool_update)
+            
         except Exception as e:
-            logger.error(f"Error finding trading opportunities: {str(e)}")
-    
-    def get_active_trades(self) -> List[Trade]:
-        """Get list of active trades."""
-        return [trade for trade in self.active_trades if trade.status == 'open']
-    
-    def get_trade_history(self) -> List[Trade]:
-        """Get list of historical trades."""
-        return [trade for trade in self.active_trades if trade.status != 'open']
-    
-    def get_trading_stats(self) -> Dict[str, float]:
-        """Get trading statistics."""
-        active_trades = self.get_active_trades()
-        total_value_sol = sum(trade.entry_price_sol * trade.quantity_tokens for trade in active_trades)
-        
-        return {
-            'total_trades': len(self.active_trades),
-            'active_trades': len(active_trades),
-            'total_value_sol': total_value_sol,
-            'sol_balance': self.get_sol_balance(),
-            'trades_today': self.trades_today
-        }
+            logger.error(f"Error monitoring mempool: {str(e)}", exc_info=True)
+            raise
+            
+    async def _test_connections(self) -> bool:
+        """Test all API connections."""
+        try:
+            # Test Helius connection
+            logger.info("Testing Helius API connection...")
+            if not await self.helius.test_connection():
+                logger.error("Helius connection test failed")
+                return False
+                
+            # Test Solscan connection
+            logger.info("Testing Solscan API connection...")
+            if not self.solscan.test_connection():
+                logger.warning("Solscan connection test failed, continuing anyway...")
+                
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error testing connections: {str(e)}", exc_info=True)
+            return False
+            
+    def _validate_config(self) -> bool:
+        """Validate configuration."""
+        try:
+            required_keys = [
+                'api_keys.helius.key',
+                'api_keys.helius.rpc_url',
+                'api_keys.solscan.key',
+                'trading.max_position_size',
+                'trading.stop_loss',
+                'trading.take_profit',
+                'trading.trailing_stop'
+            ]
+            
+            for key in required_keys:
+                parts = key.split('.')
+                current = self.config
+                for part in parts:
+                    if part not in current:
+                        logger.error(f"Missing required config key: {key}")
+                        return False
+                    current = current[part]
+                    
+            logger.info("Configuration validation successful")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error validating config: {str(e)}", exc_info=True)
+            return False
+            
+    async def _setup_monitoring(self) -> bool:
+        """Setup monitoring and alerts."""
+        try:
+            # Setup prometheus metrics if enabled
+            if self.config.get('monitoring', {}).get('enable_prometheus', False):
+                logger.info("Setting up Prometheus metrics...")
+                # TODO: Initialize prometheus metrics
+                pass
+                
+            # Setup alerts if enabled
+            if self.config.get('monitoring', {}).get('enable_alerts', False):
+                logger.info("Setting up alerting system...")
+                # TODO: Initialize alerting system
+                pass
+                
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error setting up monitoring: {str(e)}", exc_info=True)
+            return False
+            
+    def _is_interesting_transaction(self, tx_data: Dict[str, Any]) -> bool:
+        """Check if transaction is interesting for trading."""
+        try:
+            # Check if we have transaction data
+            if not tx_data or not isinstance(tx_data, dict):
+                return False
+                
+            # Log transaction data at debug level
+            logger.debug(f"Checking transaction: {tx_data}")
+            
+            # Look for token program interactions
+            if "transaction" in tx_data and "message" in tx_data["transaction"]:
+                message = tx_data["transaction"]["message"]
+                
+                # Check account keys
+                if "accountKeys" not in message:
+                    return False
+                    
+                # Look for token program account
+                token_program = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+                account_keys = [key["pubkey"] for key in message["accountKeys"]]
+                if token_program not in account_keys:
+                    return False
+                    
+                # Check instructions
+                if "instructions" in message:
+                    for ix in message["instructions"]:
+                        # Check for token program instructions
+                        if ix["programId"] == token_program:
+                            # Check for token initialization or large transfers
+                            if "data" in ix:
+                                data = ix["data"]
+                                if data.startswith("3"):  # InitializeMint instruction
+                                    logger.info(f"Found token initialization: {tx_data}")
+                                    return True
+                                elif data.startswith("2"):  # Transfer instruction
+                                    # Check transfer amount
+                                    try:
+                                        amount = int(data[1:], 16)
+                                        if amount > 1000000:  # Adjust threshold as needed
+                                            logger.info(f"Found large token transfer: {amount} tokens")
+                                            return True
+                                    except ValueError:
+                                        pass
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error checking transaction interest: {str(e)}", exc_info=True)
+            return False
+            
+    def _extract_token_address(self, tx_data: Dict[str, Any]) -> Optional[str]:
+        """Extract token address from transaction data."""
+        try:
+            if "transaction" in tx_data and "message" in tx_data["transaction"]:
+                message = tx_data["transaction"]["message"]
+                
+                # Look for token program interactions
+                if "accountKeys" in message:
+                    for key in message["accountKeys"]:
+                        # Check if this is a token mint account
+                        if key.get("signer", False) and key.get("writable", False):
+                            logger.info(f"Found token address: {key['pubkey']}")
+                            return key["pubkey"]
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error extracting token address: {str(e)}", exc_info=True)
+            return None
+            
+    async def _analyze_token_opportunity(self, token_address: str):
+        """Analyze a token for trading opportunity."""
+        try:
+            # Get token information from Solscan
+            logger.info(f"Analyzing token: {token_address}")
+            token_info = self.solscan.get_token_info(token_address)
+            
+            if token_info:
+                logger.info(f"Token analysis for {token_info.symbol} ({token_address}):")
+                logger.info(f"Market cap: ${token_info.market_cap:,.2f}")
+                logger.info(f"24h volume: ${token_info.volume_24h:,.2f}")
+                logger.info(f"Holder count: {token_info.holder_count:,}")
+            else:
+                logger.warning(f"Could not get token info for {token_address}")
+            
+        except Exception as e:
+            logger.error(f"Error analyzing token opportunity: {str(e)}", exc_info=True)
+            
+    async def _monitor_positions(self):
+        """Monitor active trading positions."""
+        # TODO: Implement position monitoring logic
+        pass

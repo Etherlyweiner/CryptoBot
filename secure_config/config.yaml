@@ -1,37 +1,44 @@
 # Secure Configuration File
 api_keys:
   helius:
-    key: "YOUR_HELIUS_API_KEY"
+    key: "74d34f4f-e88d-4da1-8178-01ef5749372c"
     rpc_url: "https://mainnet.helius-rpc.com/"
   birdeye:
     key: "YOUR_BIRDEYE_API_KEY"
     base_url: "https://public-api.birdeye.so"
+  solscan:
+    key: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjcmVhdGVkQXQiOjE3Mzg0OTIxOTc1OTUsImVtYWlsIjoiZXRoZXJseWNvbm5lY3RlZDExQHByb3Rvbm1haWwuY29tIiwiYWN0aW9uIjoidG9rZW4tYXBpIiwiYXBpVmVyc2lvbiI6InYyIiwiaWF0IjoxNzM4NDkyMTk3fQ.P_EMG0JRQX4acFFdBZh8qV8VCb9ldn8wQI4IohM8cEg"
+    base_url: "https://public-api.solscan.io/v2"
 
 network:
-  name: "mainnet"  # or "devnet"
+  name: "mainnet"
   rpc_endpoints:
     - "https://api.mainnet-beta.solana.com"
     - "https://solana-api.projectserum.com"
     
 wallet:
+  address: "7YTZcHQGJuReSDrQVvPCAj8qyxPzaUexHdKcswrumoyc"
   encryption_key: ""  # Will be auto-generated
   private_key_path: "secure_config/wallet.key"
 
-cache:
-  redis:
-    host: "localhost"
-    port: 6379
-    db: 0
-    
+trading:
+  max_position_size: 0.1  # Maximum position size in SOL
+  stop_loss: 0.05        # 5% stop loss
+  take_profit: 0.1       # 10% take profit
+  trailing_stop: 0.03    # 3% trailing stop
+  max_slippage: 0.01     # 1% maximum slippage
+  max_positions: 5       # Maximum number of concurrent positions
+  max_trades_per_day: 10 # Maximum number of trades per day
+  order_timeout: 30      # Order timeout in seconds
+
 monitoring:
   log_level: "INFO"
   metrics_port: 9090
-  alert_email: ""
+  enable_prometheus: true
+  enable_alerts: true
   
-trading:
-  max_position_size: 1.0  # SOL
-  min_liquidity: 100000  # USD
-  min_market_cap: 1000000  # USD
-  take_profit: 0.1  # 10%
-  stop_loss: 0.05  # 5%
-  trailing_stop: 0.1  # 10%
+security:
+  enable_encryption: true
+  key_rotation_days: 30
+  max_failed_attempts: 3
+  lockout_minutes: 30
