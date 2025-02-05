@@ -180,55 +180,39 @@ class TradingBot:
             True if all critical connections are successful
         """
         try:
-            logger.info("Testing API connections...")
-            
-            # Test Helius API connection with retries
-            logger.info("Testing Helius API connection...")
-            helius_success = False
-            for attempt in range(3):
-                try:
-                    async with self.helius as client:
-                        if await client.test_connection():
-                            helius_success = True
-                            logger.info("Helius API connection successful")
-                            break
-                        await asyncio.sleep(2 ** attempt)  # Exponential backoff
-                except Exception as e:
-                    logger.warning(f"Helius connection attempt {attempt + 1}/3 failed: {str(e)}")
-                    if attempt < 2:  # Don't sleep on last attempt
-                        await asyncio.sleep(2 ** attempt)
-                        
-            if not helius_success:
-                logger.error("Helius connection test failed")
+            # Test Helius RPC connection
+            network = await self.helius.get_network_version()
+            if not network:
+                logger.error("Helius RPC connection test failed")
                 return False
                 
-            # Test Jupiter API connection with retries
-            logger.info("Testing Jupiter API connection...")
-            jupiter_success = False
+            # Test Jupiter API connection with increased timeout
             for attempt in range(3):
-                try:
-                    async with self.jupiter as jupiter:
-                        tokens = await jupiter.get_token_list()
-                        if tokens:
-                            logger.info(f"Jupiter API connection successful, found {len(tokens)} tokens")
-                            jupiter_success = True
-                            break
-                        logger.warning(f"Empty token list (attempt {attempt + 1}/3)")
-                        if attempt < 2:
-                            await asyncio.sleep(2 ** attempt)
-                except Exception as e:
-                    logger.warning(f"Jupiter connection attempt {attempt + 1}/3 failed: {str(e)}")
-                    if attempt < 2:
-                        await asyncio.sleep(2 ** attempt)
-                        
-            if not jupiter_success:
-                logger.error("Jupiter API connection test failed")
+                if await self.jupiter.test_connection():
+                    break
+                if attempt < 2:  # Don't sleep on last attempt
+                    await asyncio.sleep(2 ** attempt)
+            else:
+                logger.error("Jupiter API connection test failed after 3 attempts")
                 return False
-                    
+                
+            # Initialize token list
+            tokens = await self.jupiter.get_token_list(force_refresh=True)
+            if not tokens:
+                logger.error("Failed to initialize token list")
+                return False
+                
+            # Verify WSOL token is available
+            wsol = self.jupiter.find_token("WSOL")
+            if not wsol:
+                logger.error("Could not find WSOL token in token list")
+                return False
+                
+            logger.info("All API connection tests passed")
             return True
             
         except Exception as e:
-            logger.exception(f"Error testing API connections: {str(e)}")
+            logger.exception(f"API connection tests failed: {str(e)}")
             return False
             
     async def start(self):

@@ -75,6 +75,39 @@ cp config/env_template.txt .env
 streamlit run src/cryptobot/app.py
 ```
 
+## Quick Start
+
+### First-Time Setup
+1. Install Redis for Windows (if not already installed)
+2. Install Node.js (if not already installed)
+3. Run the following command to create a desktop shortcut:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File create_shortcut.ps1
+   ```
+
+### Starting the Bot
+1. **Using the Desktop Shortcut**
+   - Double-click the "CryptoBot Dashboard" shortcut on your desktop
+   - The dashboard will open automatically in your default browser
+   - All components (Redis, Trading Bot, Dashboard) will start automatically
+
+2. **Manual Start**
+   - Run `start_all.bat` from the project directory
+   - The dashboard will open automatically at http://localhost:8000
+
+### Components
+The startup script ensures all components start in the correct order:
+1. Redis server (if not running)
+2. Node.js dashboard server
+3. Python trading bot
+4. Web browser with dashboard
+
+### Troubleshooting
+If you encounter any issues:
+1. Ensure Redis is installed and running (`net start Redis` as Administrator)
+2. Verify Node.js is installed (`node --version`)
+3. Check the logs in the `logs` directory for detailed error messages
+
 ## Configuration
 
 ### Environment Variables

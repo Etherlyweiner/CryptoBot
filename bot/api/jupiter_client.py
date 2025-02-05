@@ -1,265 +1,168 @@
 """Jupiter DEX API client."""
 
-import logging
-import aiohttp
-from typing import Dict, Any, List, Optional, Tuple
-from decimal import Decimal
 import asyncio
-import json
+import logging
+from decimal import Decimal
+from typing import Dict, List, Optional, Union
+
+import aiohttp
+from aiohttp import ClientTimeout
 
 logger = logging.getLogger(__name__)
 
 class JupiterClient:
-    """Jupiter DEX API client for token swaps."""
+    """Client for interacting with Jupiter DEX API."""
     
     def __init__(self, rpc_url: str):
         """Initialize Jupiter client.
         
         Args:
-            rpc_url: Helius RPC URL for Solana network
+            rpc_url: Solana RPC URL to use
         """
         self.rpc_url = rpc_url
+        self.base_url = "https://quote-api.jup.ag/v6"
         self.session = None
-        self.base_url = "https://api.jup.ag"
+        self.token_list = None
+        self.wsol_address = "So11111111111111111111111111111111111111112"
         
-    async def __aenter__(self):
-        """Create aiohttp session."""
-        if not self.session:
-            self.session = aiohttp.ClientSession()
-        return self
-        
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Close aiohttp session."""
-        await self._close_session()
-        
-    async def _close_session(self):
-        """Close the aiohttp session."""
-        if self.session:
-            await self.session.close()
-            self.session = None
+    async def _ensure_session(self) -> None:
+        """Ensure aiohttp session exists."""
+        if self.session is None or self.session.closed:
+            timeout = ClientTimeout(total=30)  # Increased timeout
+            self.session = aiohttp.ClientSession(timeout=timeout)
             
-    async def _ensure_session(self):
-        """Ensure we have an active session."""
-        if not self.session:
-            self.session = aiohttp.ClientSession()
+    async def _request(self, method: str, endpoint: str, **kwargs) -> Dict:
+        """Make HTTP request with retries.
+        
+        Args:
+            method: HTTP method
+            endpoint: API endpoint
+            **kwargs: Additional arguments for request
             
-    async def get_token_list(self) -> List[Dict[str, Any]]:
+        Returns:
+            Response data
+            
+        Raises:
+            Exception if request fails after retries
+        """
+        await self._ensure_session()
+        
+        max_retries = 3
+        base_delay = 1  # Start with 1 second delay
+        
+        for attempt in range(max_retries):
+            try:
+                url = f"{self.base_url}/{endpoint}"
+                async with self.session.request(method, url, **kwargs) as response:
+                    if response.status == 429:  # Rate limited
+                        retry_after = int(response.headers.get('Retry-After', base_delay))
+                        logger.warning(f"Rate limited, waiting {retry_after} seconds")
+                        await asyncio.sleep(retry_after)
+                        continue
+                        
+                    response.raise_for_status()
+                    return await response.json()
+                    
+            except aiohttp.ClientError as e:
+                delay = base_delay * (2 ** attempt)  # Exponential backoff
+                logger.warning(f"Request failed (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(delay)
+                else:
+                    raise
+                    
+    async def test_connection(self) -> bool:
+        """Test connection to Jupiter API.
+        
+        Returns:
+            True if connection successful
+        """
+        try:
+            # Try to get token list as connection test
+            await self.get_token_list(force_refresh=True)
+            return True
+        except Exception as e:
+            logger.error(f"Jupiter API connection test failed: {str(e)}")
+            return False
+            
+    async def get_token_list(self, force_refresh: bool = False) -> List[Dict]:
         """Get list of supported tokens.
         
-        Returns:
-            List of token information dictionaries
-        """
-        try:
-            await self._ensure_session()
+        Args:
+            force_refresh: Force refresh token list
             
-            # First get tradable tokens
+        Returns:
+            List of token info dictionaries
+        """
+        if self.token_list is None or force_refresh:
             try:
-                async with self.session.get(
-                    f"{self.base_url}/tokens/v1/mints/tradable",
-                    timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
-                    if response.status == 200:
-                        tradable_tokens = await response.json()
-                        if isinstance(tradable_tokens, list):
-                            logger.info(f"Successfully fetched {len(tradable_tokens)} tradable tokens")
-                            
-                            # Now get token metadata for each token in batches
-                            tokens = []
-                            batch_size = 50  # Process 50 tokens at a time
-                            
-                            for i in range(0, len(tradable_tokens), batch_size):
-                                batch = tradable_tokens[i:i + batch_size]
-                                batch_tasks = []
-                                
-                                for token_addr in batch:
-                                    task = asyncio.create_task(self._get_token_metadata(token_addr))
-                                    batch_tasks.append(task)
-                                    
-                                # Wait for all tasks in batch with timeout
-                                try:
-                                    batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
-                                    for result in batch_results:
-                                        if isinstance(result, dict) and result:
-                                            tokens.append(result)
-                                except Exception as e:
-                                    logger.warning(f"Error processing token metadata batch: {str(e)}")
-                                    
-                            if tokens:
-                                logger.info(f"Successfully fetched metadata for {len(tokens)} tokens")
-                                return tokens
-                            else:
-                                logger.warning("No token metadata found")
-                                return [{"address": addr} for addr in tradable_tokens]
-                                
-                    elif response.status == 429:
-                        logger.error("Rate limited by Jupiter API")
-                        return []
-                    else:
-                        logger.error(f"Failed to fetch tradable tokens: HTTP {response.status}")
-                        return []
-                        
-            except asyncio.TimeoutError:
-                logger.error("Timeout while fetching tradable tokens")
-                return []
-                
+                response = await self._request('GET', 'tokens')
+                if isinstance(response, str):
+                    # Handle case where response is a string instead of JSON
+                    logger.error(f"Unexpected string response from token list API: {response}")
+                    return []
+                    
+                self.token_list = response.get('data', [])
+                if not self.token_list:
+                    logger.warning("Empty token list received")
+                    
             except Exception as e:
-                logger.error(f"Error fetching tradable tokens: {str(e)}")
+                logger.error(f"Failed to get token list: {str(e)}")
                 return []
                 
-        except Exception as e:
-            logger.error(f"Failed to get token list: {str(e)}")
-            return []
-            
-    async def _get_token_metadata(self, token_addr: str) -> Optional[Dict[str, Any]]:
-        """Get metadata for a specific token.
+        return self.token_list
+        
+    def find_token(self, symbol: str) -> Optional[Dict]:
+        """Find token by symbol.
         
         Args:
-            token_addr: Token mint address
+            symbol: Token symbol
             
         Returns:
-            Token metadata dictionary or None if not found
+            Token info dictionary or None if not found
         """
-        try:
-            async with self.session.get(
-                f"{self.base_url}/tokens/v1/token/{token_addr}",
-                timeout=aiohttp.ClientTimeout(total=5)
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if isinstance(data, dict):
-                        return {
-                            "address": token_addr,
-                            "symbol": data.get("symbol", ""),
-                            "decimals": data.get("decimals", 0),
-                            "name": data.get("name", ""),
-                            "coingeckoId": data.get("coingeckoId"),
-                            "tags": data.get("tags", [])
-                        }
-                elif response.status != 404:  # Ignore 404s, just return None
-                    logger.warning(f"Failed to fetch token metadata for {token_addr}: HTTP {response.status}")
-                return None
-                
-        except Exception as e:
-            logger.warning(f"Error fetching token metadata for {token_addr}: {str(e)}")
+        if not self.token_list:
             return None
             
-    async def get_price(self, token_addr: str, vs_token: str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v") -> Optional[Decimal]:
-        """Get token price in terms of another token (default USDC).
+        symbol = symbol.upper()
+        for token in self.token_list:
+            if token.get('symbol', '').upper() == symbol:
+                return token
+        return None
         
-        Args:
-            token_addr: Token mint address to get price for
-            vs_token: Token mint address to price against (default USDC)
-            
-        Returns:
-            Price as Decimal or None if not found
-        """
-        try:
-            await self._ensure_session()
-            
-            async with self.session.get(
-                f"{self.base_url}/price/v2",
-                params={
-                    "ids": token_addr,
-                    "vsToken": vs_token
-                },
-                timeout=aiohttp.ClientTimeout(total=5)
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if isinstance(data, dict) and "data" in data:
-                        token_data = data["data"].get(token_addr)
-                        if token_data and "price" in token_data:
-                            return Decimal(str(token_data["price"]))
-                elif response.status == 429:
-                    logger.error("Rate limited by Jupiter price API")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Failed to get price for {token_addr}: {str(e)}")
-            return None
-
-    async def get_quote(
-        self,
-        input_mint: str,
-        output_mint: str,
-        amount: int,
-        slippage_bps: int = 100,  # 1%
-        only_direct_routes: bool = False
-    ) -> Optional[Dict[str, Any]]:
-        """Get quote for token swap.
+    async def get_quote(self, 
+                       input_mint: str,
+                       output_mint: str,
+                       amount: Union[int, Decimal],
+                       slippage: Decimal) -> Optional[Dict]:
+        """Get quote for swap.
         
         Args:
             input_mint: Input token mint address
             output_mint: Output token mint address
-            amount: Amount of input tokens (in smallest units)
-            slippage_bps: Slippage tolerance in basis points (1 bp = 0.01%)
-            only_direct_routes: If True, only consider direct swap routes
+            amount: Amount of input token (in lamports/smallest units)
+            slippage: Maximum slippage percentage
             
         Returns:
-            Quote information or None if failed
+            Quote data or None if quote fails
         """
         try:
-            await self._ensure_session()
             params = {
                 "inputMint": input_mint,
                 "outputMint": output_mint,
                 "amount": str(amount),
-                "slippageBps": slippage_bps,
-                "onlyDirectRoutes": only_direct_routes,
-                "asLegacyTransaction": True
+                "slippageBps": int(slippage * 100),  # Convert percentage to basis points
+                "onlyDirectRoutes": "true",  # Prefer direct routes for better pricing
+                "asLegacyTransaction": "true"  # Use legacy transactions for better compatibility
             }
             
-            async with self.session.get(
-                f"{self.base_url}/quote",
-                params=params
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    logger.error(f"Failed to get quote: {response.status}")
-                    return None
-                    
+            return await self._request('GET', 'quote', params=params)
+            
         except Exception as e:
-            logger.error(f"Error getting quote: {str(e)}")
+            logger.error(f"Failed to get quote: {str(e)}")
             return None
             
-    async def get_swap_transaction(
-        self,
-        quote: Dict[str, Any],
-        user_public_key: str,
-        priority_fee: Optional[int] = None
-    ) -> Optional[Dict[str, Any]]:
-        """Get swap transaction for a quote.
-        
-        Args:
-            quote: Quote from get_quote()
-            user_public_key: User's wallet public key
-            priority_fee: Optional priority fee in lamports
-            
-        Returns:
-            Transaction data or None if failed
-        """
-        try:
-            await self._ensure_session()
-            data = {
-                "quoteResponse": quote,
-                "userPublicKey": user_public_key,
-                "asLegacyTransaction": True
-            }
-            
-            if priority_fee is not None:
-                data["priorityFee"] = priority_fee
-                
-            async with self.session.post(
-                f"{self.base_url}/swap",
-                json=data
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    logger.error(f"Failed to get swap transaction: {response.status}")
-                    return None
-                    
-        except Exception as e:
-            logger.error(f"Error getting swap transaction: {str(e)}")
-            return None
+    async def close(self):
+        """Close client session."""
+        if self.session and not self.session.closed:
+            await self.session.close()
