@@ -11,7 +11,7 @@ nest-asyncio==1.5.7
 asyncio==3.4.3
 redis==5.0.1
 aioredis==2.0.1
-websockets>=10.3
+websockets>=9.0,<11.0
 
 # Data processing
 pandas==2.2.0

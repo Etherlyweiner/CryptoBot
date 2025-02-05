@@ -11,6 +11,11 @@ from datetime import datetime
 from bot.wallet.phantom_integration import PhantomWalletManager
 from bot.api.helius_client import HeliusClient
 from bot.api.jupiter_client import JupiterClient
+from .trade_logger import TradeLogger
+from .websocket_server import WebSocketServer
+from .price_monitor import PriceMonitor
+from .strategy import TradingStrategy
+from .risk_manager import RiskManager
 
 # Load logging configuration
 with open('config/logging_config.yaml', 'r') as f:
@@ -61,6 +66,27 @@ class TradingBot:
         self.position_size = Decimal(str(self.settings.get('position_size', '0.1')))  # 0.1 SOL
         self.cooldown_minutes = int(self.settings.get('cooldown_minutes', 60))
         self.priority_fee = int(self.settings.get('priority_fee', 10000))  # 0.00001 SOL
+        
+        # Initialize trade logger
+        self.trade_logger = TradeLogger()
+        
+        # Initialize WebSocket server
+        self.ws_server = WebSocketServer()
+        
+        # Initialize price monitor
+        self.price_monitor = None
+        
+        # Initialize strategy
+        self.strategy = None
+        
+        # Initialize risk manager
+        self.risk_manager = None
+        
+        # Load strategy settings
+        self.strategy_config = config.get('strategy', {})
+        
+        # Load risk settings
+        self.risk_config = config.get('risk', {})
             
     async def initialize(self) -> Tuple[bool, str]:
         """Initialize the trading bot.
@@ -131,6 +157,15 @@ class TradingBot:
                 logger.error("API connection tests failed")
                 return False, "API connection tests failed"
                 
+            # Initialize price monitor
+            self.price_monitor = PriceMonitor(self.jupiter)
+            
+            # Initialize strategy
+            self.strategy = TradingStrategy(self.price_monitor, self.strategy_config)
+            
+            # Initialize risk manager
+            self.risk_manager = RiskManager(self.risk_config)
+            
             logger.info("Trading bot initialized successfully")
             return True, "Initialized successfully"
             
@@ -167,17 +202,27 @@ class TradingBot:
                 logger.error("Helius connection test failed")
                 return False
                 
-            # Test Jupiter API connection
-            try:
-                async with self.jupiter as jupiter:
-                    tokens = await jupiter.get_token_list()
-                    if tokens:
-                        logger.info("Jupiter API connection successful")
-                    else:
-                        logger.error("Jupiter token list empty")
-                        return False
-            except Exception as e:
-                logger.error(f"Jupiter connection failed: {str(e)}")
+            # Test Jupiter API connection with retries
+            logger.info("Testing Jupiter API connection...")
+            jupiter_success = False
+            for attempt in range(3):
+                try:
+                    async with self.jupiter as jupiter:
+                        tokens = await jupiter.get_token_list()
+                        if tokens:
+                            logger.info(f"Jupiter API connection successful, found {len(tokens)} tokens")
+                            jupiter_success = True
+                            break
+                        logger.warning(f"Empty token list (attempt {attempt + 1}/3)")
+                        if attempt < 2:
+                            await asyncio.sleep(2 ** attempt)
+                except Exception as e:
+                    logger.warning(f"Jupiter connection attempt {attempt + 1}/3 failed: {str(e)}")
+                    if attempt < 2:
+                        await asyncio.sleep(2 ** attempt)
+                        
+            if not jupiter_success:
+                logger.error("Jupiter API connection test failed")
                 return False
                     
             return True
@@ -189,12 +234,30 @@ class TradingBot:
     async def start(self):
         """Start the trading bot."""
         try:
-            logger.info("Starting trading bot...")
+            # Start price monitor
+            if self.price_monitor:
+                await self.price_monitor.start()
+                
+            # Start WebSocket server
+            await self.ws_server.start()
             
-            # Initialize bot
-            success, message = await self.initialize()
+            # Initialize bot with retries
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    success, message = await self.initialize()
+                    if success:
+                        break
+                    logger.warning(f"Bot initialization attempt {attempt + 1}/{max_retries} failed: {message}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2 ** attempt)
+                except Exception as e:
+                    logger.warning(f"Bot initialization attempt {attempt + 1}/{max_retries} failed with error: {str(e)}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2 ** attempt)
+            
             if not success:
-                logger.error(f"Bot initialization failed: {message}")
+                logger.error(f"Bot initialization failed after {max_retries} attempts: {message}")
                 return
             
             self.running = True
@@ -207,21 +270,141 @@ class TradingBot:
             
     async def stop(self):
         """Stop the trading bot."""
-        try:
-            logger.info("Stopping trading bot...")
-            self.running = False
+        self.running = False
+        
+        # Stop price monitor
+        if self.price_monitor:
+            await self.price_monitor.stop()
             
-            # Close API connections
-            if hasattr(self, 'helius') and self.helius:
-                await self.helius._close_session()
+        # Stop WebSocket server
+        await self.ws_server.stop()
+        
+    async def _log_and_broadcast_trade(self, trade_data):
+        """Log trade and broadcast to WebSocket clients."""
+        # Log trade
+        if self.trade_logger.log_trade(trade_data):
+            # Get updated performance metrics
+            metrics = self.trade_logger.get_performance_metrics()
+            
+            # Broadcast trade and metrics
+            await self.ws_server.broadcast_update('trade', trade_data)
+            await self.ws_server.broadcast_update('performance', metrics)
+            
+    async def _broadcast_price_updates(self):
+        """Broadcast price updates to WebSocket clients."""
+        if not self.price_monitor:
+            return
+            
+        prices = self.price_monitor.get_all_prices()
+        for token_address, price_data in prices.items():
+            await self.ws_server.broadcast_update('price', {
+                'token': token_address,
+                'price': price_data['price'],
+                'priceChange': price_data['priceChange'],
+                'timestamp': price_data['timestamp']
+            })
+            
+    async def _execute_trade(self, opportunity: Dict, position_size: Decimal) -> bool:
+        """Execute a trade.
+        
+        Args:
+            opportunity: Trading opportunity
+            position_size: Position size in SOL
+            
+        Returns:
+            bool: True if trade was successful
+        """
+        try:
+            # Check risk limits
+            can_trade, reason = self.risk_manager.can_open_position(
+                opportunity['token'],
+                position_size,
+                self.wallet_manager.get_sol_balance()
+            )
+            
+            if not can_trade:
+                logger.warning(f"Trade rejected by risk manager: {reason}")
+                return False
                 
-            if hasattr(self, 'jupiter') and self.jupiter:
-                await self.jupiter._close_session()
+            # Prepare trade
+            token_address = opportunity['token']
+            trade_type = opportunity['type']
+            
+            # Calculate amounts
+            amount_in = position_size * Decimal('1000000000')  # Convert to lamports
+            
+            # Get quote
+            quote = await self.jupiter.get_quote(
+                input_mint=token_address if trade_type == 'sell' else 'So11111111111111111111111111111111111111112',
+                output_mint=token_address if trade_type == 'buy' else 'So11111111111111111111111111111111111111112',
+                amount=int(amount_in),
+                slippage_bps=100  # 1% slippage
+            )
+            
+            if not quote:
+                logger.error("Failed to get quote")
+                return False
                 
-            logger.info("Trading bot stopped")
+            # Execute swap
+            success = await self.jupiter.swap(
+                wallet_pubkey=self.wallet_manager.public_key,
+                quote=quote
+            )
+            
+            if success:
+                # Record position
+                self.risk_manager.open_position(
+                    opportunity['token'],
+                    Decimal(str(opportunity['price'])),
+                    position_size
+                )
+                
+                # Log trade
+                trade_data = {
+                    'timestamp': datetime.now().isoformat(),
+                    'type': trade_type,
+                    'token': token_address,
+                    'amount': float(position_size),
+                    'price': opportunity['price'],
+                    'slippage': 1.0
+                }
+                await self._log_and_broadcast_trade(trade_data)
+                
+                # Update last trade time
+                self.last_trade_time = datetime.now()
+                
+                logger.info(f"Trade executed: {trade_type} {position_size} SOL worth of {token_address}")
+                return True
+                
+            else:
+                logger.error("Trade execution failed")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error executing trade: {str(e)}")
+            return False
+            
+    async def _update_risk_metrics(self):
+        """Update and broadcast risk metrics."""
+        try:
+            # Update position PnLs
+            if self.price_monitor and self.risk_manager:
+                prices = self.price_monitor.get_all_prices()
+                for token, price_data in prices.items():
+                    if token in self.risk_manager.open_positions:
+                        self.risk_manager.update_position_pnl(
+                            token,
+                            Decimal(str(price_data['price']))
+                        )
+                        
+            # Get current metrics
+            metrics = self.risk_manager.get_position_risk_metrics()
+            
+            # Broadcast metrics
+            await self.ws_server.broadcast_update('risk', metrics)
             
         except Exception as e:
-            logger.exception(f"Error stopping trading bot: {str(e)}")
+            logger.error(f"Error updating risk metrics: {str(e)}")
             
     async def _trading_loop(self):
         """Main trading loop."""
@@ -235,7 +418,7 @@ class TradingBot:
                             logger.debug(f"Cooling down, {self.cooldown_minutes - elapsed:.1f} minutes remaining")
                             await asyncio.sleep(60)  # Check again in a minute
                             continue
-                    
+                            
                     # Check SOL balance
                     success, balance = await self.wallet_manager.get_sol_balance()
                     if not success or balance < self.min_sol_balance:
@@ -243,40 +426,39 @@ class TradingBot:
                         await asyncio.sleep(300)  # Check again in 5 minutes
                         continue
                         
-                    # Calculate position size in lamports (1 SOL = 1e9 lamports)
-                    position_lamports = int(self.position_size * Decimal('1000000000'))
-                    
-                    # Get token list from Jupiter
-                    async with self.jupiter as jupiter:
-                        tokens = await jupiter.get_token_list()
-                        if not tokens:
-                            logger.error("Failed to get token list")
-                            await asyncio.sleep(60)
-                            continue
-                            
-                        # Find WSOL token (wrapped SOL)
-                        wsol_token = next((t for t in tokens if t.get('symbol') == 'WSOL'), None)
-                        if not wsol_token:
-                            logger.error("Could not find WSOL token")
-                            await asyncio.sleep(60)
-                            continue
-                            
-                        # TODO: Implement token selection strategy
-                        # For now, we'll just log that we're ready to trade
-                        logger.info(f"Ready to trade {self.position_size} SOL")
-                        logger.debug(f"Available tokens: {len(tokens)}")
+                    # Update token prices
+                    if self.price_monitor:
+                        # Find trading opportunities
+                        opportunities = self.strategy.find_trading_opportunities()
                         
-                        # Sleep to prevent CPU spinning
-                        await asyncio.sleep(1)
+                        # Execute best opportunity if available
+                        if opportunities:
+                            best_opportunity = opportunities[0]
+                            position_size = self.strategy.calculate_position_size(
+                                best_opportunity,
+                                Decimal(str(balance))
+                            )
+                            
+                            if position_size > 0:
+                                logger.info(f"Found trading opportunity: {best_opportunity}")
+                                success = await self._execute_trade(best_opportunity, position_size)
+                                if success:
+                                    await asyncio.sleep(self.cooldown_minutes * 60)  # Wait for cooldown
+                                    continue
+                                    
+                        # Broadcast price updates
+                        await self._broadcast_price_updates()
+                        
+                    # Update risk metrics
+                    await self._update_risk_metrics()
+                    
+                    # Sleep to prevent CPU spinning
+                    await asyncio.sleep(1)
                     
                 except Exception as e:
-                    logger.exception(f"Error in trading loop: {str(e)}")
-                    await asyncio.sleep(5)  # Wait before retrying
+                    logger.error(f"Error in trading loop: {str(e)}")
+                    await asyncio.sleep(60)  # Wait before retrying
                     
-        except asyncio.CancelledError:
-            logger.info("Trading loop cancelled")
-            await self.stop()
-            
         except Exception as e:
             logger.exception(f"Fatal error in trading loop: {str(e)}")
             await self.stop()

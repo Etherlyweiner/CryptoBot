@@ -99,6 +99,51 @@
         }
         .price-up { color: #4caf50; }
         .price-down { color: #f44336; }
+        .trade-item {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .trade-item:last-child {
+            border-bottom: none;
+        }
+        .trade-time {
+            font-size: 14px;
+            color: #666;
+        }
+        .trade-pair {
+            font-weight: bold;
+        }
+        .trade-type {
+            font-size: 14px;
+            color: #666;
+        }
+        .trade-amount {
+            font-size: 14px;
+            color: #666;
+        }
+        .trade-price {
+            font-size: 14px;
+            color: #666;
+        }
+        .metric {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .metric.positive {
+            color: #4caf50;
+        }
+        .metric.negative {
+            color: #f44336;
+        }
+        .price-change {
+            font-size: 14px;
+        }
+        .price-change.positive {
+            color: #4caf50;
+        }
+        .price-change.negative {
+            color: #f44336;
+        }
     </style>
 </head>
 <body>
@@ -141,6 +186,15 @@
             </div>
 
             <button onclick="executeSwap()" id="swapButton" disabled>Swap</button>
+        </div>
+
+        <div id="connection-status" class="status" style="display: none;"></div>
+        <div id="trades-list"></div>
+        <div id="performance-metrics">
+            <h2>Performance Metrics</h2>
+            <p>Total Profit/Loss: <span id="total-pl">-</span></p>
+            <p>Win Rate: <span id="win-rate">-</span></p>
+            <p>Trade Count: <span id="trade-count">-</span></p>
         </div>
     </div>
 
@@ -373,6 +427,160 @@ window.solana: ${window.solana ? 'Present' : 'Not found'}
                 swapButton.disabled = false;
             }
         }
+
+        // WebSocket connection
+        let ws;
+        let pingInterval;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 5;
+        
+        function connectWebSocket() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${window.location.host}`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                document.getElementById('connection-status').textContent = 'Connected';
+                document.getElementById('connection-status').className = 'status success';
+                
+                // Reset reconnect attempts
+                reconnectAttempts = 0;
+                
+                // Start ping interval
+                if (pingInterval) clearInterval(pingInterval);
+                pingInterval = setInterval(sendPing, 30000);
+                
+                // Subscribe to updates
+                ws.send(JSON.stringify({
+                    type: 'subscribe',
+                    topics: ['trades', 'prices', 'performance']
+                }));
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                document.getElementById('connection-status').textContent = 'Disconnected';
+                document.getElementById('connection-status').className = 'status error';
+                
+                // Clear ping interval
+                if (pingInterval) clearInterval(pingInterval);
+                
+                // Attempt to reconnect
+                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    reconnectAttempts++;
+                    setTimeout(connectWebSocket, 5000 * reconnectAttempts);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                document.getElementById('connection-status').textContent = 'Connection Error';
+                document.getElementById('connection-status').className = 'status error';
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    handleWebSocketMessage(message);
+                } catch (error) {
+                    console.error('Error handling message:', error);
+                }
+            };
+        }
+        
+        function sendPing() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'ping',
+                    timestamp: Date.now()
+                }));
+            }
+        }
+        
+        function handleWebSocketMessage(message) {
+            switch (message.type) {
+                case 'trade':
+                    updateTradeHistory(message.data);
+                    break;
+                    
+                case 'price':
+                    updateTokenPrice(message.data);
+                    break;
+                    
+                case 'performance':
+                    updatePerformanceMetrics(message.data);
+                    break;
+                    
+                case 'pong':
+                    // Handle pong response if needed
+                    break;
+                    
+                default:
+                    console.log('Unknown message type:', message.type);
+            }
+        }
+        
+        function updateTradeHistory(trade) {
+            const tradesList = document.getElementById('trades-list');
+            if (!tradesList) return;
+            
+            const tradeItem = document.createElement('div');
+            tradeItem.className = 'trade-item';
+            tradeItem.innerHTML = `
+                <div class="trade-time">${new Date(trade.timestamp).toLocaleString()}</div>
+                <div class="trade-pair">${trade.tokenSymbol}/SOL</div>
+                <div class="trade-type ${trade.type}">${trade.type}</div>
+                <div class="trade-amount">${trade.amount} ${trade.tokenSymbol}</div>
+                <div class="trade-price">${trade.price} SOL</div>
+            `;
+            
+            tradesList.insertBefore(tradeItem, tradesList.firstChild);
+            
+            // Limit the number of visible trades
+            while (tradesList.children.length > 50) {
+                tradesList.removeChild(tradesList.lastChild);
+            }
+        }
+        
+        function updateTokenPrice(priceData) {
+            const priceElement = document.getElementById(`${priceData.symbol}-price`);
+            if (priceElement) {
+                priceElement.textContent = `${priceData.price} SOL`;
+                
+                // Update price change indicator
+                const changeElement = document.getElementById(`${priceData.symbol}-change`);
+                if (changeElement) {
+                    const change = priceData.priceChange24h;
+                    changeElement.textContent = `${change > 0 ? '+' : ''}${change}%`;
+                    changeElement.className = `price-change ${change > 0 ? 'positive' : 'negative'}`;
+                }
+            }
+        }
+        
+        function updatePerformanceMetrics(metrics) {
+            // Update total profit/loss
+            const plElement = document.getElementById('total-pl');
+            if (plElement) {
+                plElement.textContent = `${metrics.totalProfitLoss > 0 ? '+' : ''}${metrics.totalProfitLoss} SOL`;
+                plElement.className = `metric ${metrics.totalProfitLoss > 0 ? 'positive' : 'negative'}`;
+            }
+            
+            // Update win rate
+            const winRateElement = document.getElementById('win-rate');
+            if (winRateElement) {
+                winRateElement.textContent = `${metrics.winRate}%`;
+            }
+            
+            // Update trade count
+            const tradeCountElement = document.getElementById('trade-count');
+            if (tradeCountElement) {
+                tradeCountElement.textContent = metrics.tradeCount;
+            }
+        }
+
+        connectWebSocket();
     </script>
 </body>
 </html>

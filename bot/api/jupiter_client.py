@@ -2,9 +2,10 @@
 
 import logging
 import aiohttp
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from decimal import Decimal
 import asyncio
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ class JupiterClient:
         """
         self.rpc_url = rpc_url
         self.session = None
-        self.base_url = "https://quote-api.jup.ag/v6"
+        self.base_url = "https://api.jup.ag"
         
     async def __aenter__(self):
         """Create aiohttp session."""
@@ -51,57 +52,132 @@ class JupiterClient:
         try:
             await self._ensure_session()
             
-            # Add retry logic for token list
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    async with self.session.get(
-                        f"{self.base_url}/tokens",
-                        timeout=aiohttp.ClientTimeout(total=30)
-                    ) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            # Jupiter API v6 returns a list of token addresses
-                            if isinstance(data, list):
-                                logger.info(f"Successfully fetched {len(data)} token addresses from Jupiter")
-                                # Convert addresses to token info format
-                                tokens = [{"address": addr} for addr in data]
-                                return tokens
-                            # Handle old API format (unlikely)
-                            elif isinstance(data, dict) and "tokens" in data:
-                                logger.info(f"Successfully fetched {len(data['tokens'])} tokens from Jupiter (old format)")
-                                return data["tokens"]
-                            else:
-                                logger.warning(f"Unexpected token list format from Jupiter API: {type(data)}")
-                                if attempt < max_retries - 1:
-                                    await asyncio.sleep(2 ** attempt)
-                                    continue
-                                return []
-                        else:
-                            logger.warning(f"Failed to fetch token list (attempt {attempt + 1}/{max_retries}): HTTP {response.status}")
-                            if attempt < max_retries - 1:
-                                await asyncio.sleep(2 ** attempt)
-                                continue
-                            return []
+            # First get tradable tokens
+            try:
+                async with self.session.get(
+                    f"{self.base_url}/tokens/v1/mints/tradable",
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        tradable_tokens = await response.json()
+                        if isinstance(tradable_tokens, list):
+                            logger.info(f"Successfully fetched {len(tradable_tokens)} tradable tokens")
                             
-                except asyncio.TimeoutError:
-                    logger.warning(f"Timeout while fetching token list (attempt {attempt + 1}/{max_retries})")
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(2 ** attempt)
-                        continue
-                    return []
-                    
-                except Exception as e:
-                    logger.error(f"Error fetching token list (attempt {attempt + 1}/{max_retries}): {str(e)}")
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(2 ** attempt)
-                        continue
-                    return []
-                    
+                            # Now get token metadata for each token in batches
+                            tokens = []
+                            batch_size = 50  # Process 50 tokens at a time
+                            
+                            for i in range(0, len(tradable_tokens), batch_size):
+                                batch = tradable_tokens[i:i + batch_size]
+                                batch_tasks = []
+                                
+                                for token_addr in batch:
+                                    task = asyncio.create_task(self._get_token_metadata(token_addr))
+                                    batch_tasks.append(task)
+                                    
+                                # Wait for all tasks in batch with timeout
+                                try:
+                                    batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+                                    for result in batch_results:
+                                        if isinstance(result, dict) and result:
+                                            tokens.append(result)
+                                except Exception as e:
+                                    logger.warning(f"Error processing token metadata batch: {str(e)}")
+                                    
+                            if tokens:
+                                logger.info(f"Successfully fetched metadata for {len(tokens)} tokens")
+                                return tokens
+                            else:
+                                logger.warning("No token metadata found")
+                                return [{"address": addr} for addr in tradable_tokens]
+                                
+                    elif response.status == 429:
+                        logger.error("Rate limited by Jupiter API")
+                        return []
+                    else:
+                        logger.error(f"Failed to fetch tradable tokens: HTTP {response.status}")
+                        return []
+                        
+            except asyncio.TimeoutError:
+                logger.error("Timeout while fetching tradable tokens")
+                return []
+                
+            except Exception as e:
+                logger.error(f"Error fetching tradable tokens: {str(e)}")
+                return []
+                
         except Exception as e:
             logger.error(f"Failed to get token list: {str(e)}")
             return []
             
+    async def _get_token_metadata(self, token_addr: str) -> Optional[Dict[str, Any]]:
+        """Get metadata for a specific token.
+        
+        Args:
+            token_addr: Token mint address
+            
+        Returns:
+            Token metadata dictionary or None if not found
+        """
+        try:
+            async with self.session.get(
+                f"{self.base_url}/tokens/v1/token/{token_addr}",
+                timeout=aiohttp.ClientTimeout(total=5)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if isinstance(data, dict):
+                        return {
+                            "address": token_addr,
+                            "symbol": data.get("symbol", ""),
+                            "decimals": data.get("decimals", 0),
+                            "name": data.get("name", ""),
+                            "coingeckoId": data.get("coingeckoId"),
+                            "tags": data.get("tags", [])
+                        }
+                elif response.status != 404:  # Ignore 404s, just return None
+                    logger.warning(f"Failed to fetch token metadata for {token_addr}: HTTP {response.status}")
+                return None
+                
+        except Exception as e:
+            logger.warning(f"Error fetching token metadata for {token_addr}: {str(e)}")
+            return None
+            
+    async def get_price(self, token_addr: str, vs_token: str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v") -> Optional[Decimal]:
+        """Get token price in terms of another token (default USDC).
+        
+        Args:
+            token_addr: Token mint address to get price for
+            vs_token: Token mint address to price against (default USDC)
+            
+        Returns:
+            Price as Decimal or None if not found
+        """
+        try:
+            await self._ensure_session()
+            
+            async with self.session.get(
+                f"{self.base_url}/price/v2",
+                params={
+                    "ids": token_addr,
+                    "vsToken": vs_token
+                },
+                timeout=aiohttp.ClientTimeout(total=5)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if isinstance(data, dict) and "data" in data:
+                        token_data = data["data"].get(token_addr)
+                        if token_data and "price" in token_data:
+                            return Decimal(str(token_data["price"]))
+                elif response.status == 429:
+                    logger.error("Rate limited by Jupiter price API")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Failed to get price for {token_addr}: {str(e)}")
+            return None
+
     async def get_quote(
         self,
         input_mint: str,
