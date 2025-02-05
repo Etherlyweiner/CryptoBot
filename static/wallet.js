@@ -1,5 +1,5 @@
 // Solana wallet connection
-const EXPECTED_WALLET = '8jqv2AKPGYwojLRHQZLokkYdtHycs8HAVGDMqZUvTByB';
+const EXPECTED_WALLET = '7YTZcHQGJuReSDrQVvPCAj8qyxPzaUexHdKcswrumoyc';
 
 class WalletManager {
     constructor() {
