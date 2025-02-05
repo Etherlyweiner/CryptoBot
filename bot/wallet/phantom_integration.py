@@ -7,6 +7,7 @@ import asyncio
 import aiohttp
 from typing import Dict, Any, Tuple, Optional, List
 from datetime import datetime
+from solders.pubkey import Pubkey
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +25,16 @@ class PhantomWalletManager:
         """
         self.config = config
         self.session: Optional[aiohttp.ClientSession] = None
-        self.wallet_address = config.get('wallet', {}).get('address')
-        if not self.wallet_address:
+        wallet_address = config.get('wallet', {}).get('address')
+        if not wallet_address:
             raise ValueError("Wallet address not found in config")
+            
+        # Convert string address to Pubkey
+        try:
+            self.wallet_address = Pubkey.from_string(wallet_address)
+            logger.info(f"Initialized wallet with address: {str(self.wallet_address)}")
+        except ValueError as e:
+            raise ValueError(f"Invalid wallet address: {str(e)}")
             
         # Get Helius API configuration
         helius_config = config.get('api_keys', {}).get('helius', {})
@@ -192,7 +200,7 @@ class PhantomWalletManager:
                 
             success, result = await self._make_rpc_request(
                 "getBalance",
-                [self.wallet_address]
+                [str(self.wallet_address)]
             )
             
             if not success:
@@ -230,7 +238,7 @@ class PhantomWalletManager:
             success, result = await self._make_rpc_request(
                 "getTokenAccountsByOwner",
                 [
-                    self.wallet_address,
+                    str(self.wallet_address),
                     {"mint": token_address},
                     {"encoding": "jsonParsed"}
                 ]

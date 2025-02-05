@@ -1,10 +1,9 @@
 # Core dependencies
-streamlit==1.26.0
-solana>=0.30.0
-anchorpy>=0.14.0
+solana>=0.33.0
+anchorpy==0.20.1
 solders>=0.15.0
-aiohttp>=3.8.0
-python-dotenv>=0.19.0
+aiohttp==3.9.1
+python-dotenv==1.0.0
 cryptography==42.0.5
 prometheus-client>=0.16.0
 aiofiles==23.1.0
@@ -14,20 +13,16 @@ redis==5.0.1
 aioredis==2.0.1
 websockets>=10.3
 
-# API and Web
-requests>=2.28.0
-websockets>=10.3
-
 # Data processing
 pandas==2.2.0
 numpy==1.26.3
 ta==0.10.2
 
-# Web Framework
+# Web framework
 fastapi==0.109.0
 uvicorn==0.27.0.post1
 
-# Monitoring and metrics
+# System monitoring
 psutil==5.9.8
 pywin32>=308
 python-json-logger>=2.0.7
@@ -36,27 +31,19 @@ python-json-logger>=2.0.7
 plotly==5.16.1
 
 # Development
-black==24.1.1
-isort==5.12.0
-flake8==6.1.0
-pytest>=7.3.1
-pytest-asyncio>=0.20.0
-pytest-cov>=4.1.0
+black==23.12.1
+isort==5.13.2
+flake8==7.0.0
+pytest==7.4.4
+pytest-asyncio==0.20.3
+pytest-cov==4.1.0
+mypy==1.8.0
 
 # Security
 python-jose[cryptography]==3.3.0
 passlib==1.7.4
 bcrypt==4.1.2
 
-# Monitoring and Logging
-logging-formatter==1.1.1
-
 # Solana/Web3
-solana>=0.30.0
-anchorpy>=0.14.0
-solders>=0.15.0
 base58>=2.1.1
-
-# Helius Integration
-websockets>=10.3
-aiohttp>=3.8.0
+pyyaml==6.0.1

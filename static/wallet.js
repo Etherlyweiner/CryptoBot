@@ -4,15 +4,21 @@ const EXPECTED_WALLET = '8jqv2AKPGYwojLRHQZLokkYdtHycs8HAVGDMqZUvTByB';
 class WalletManager {
     constructor() {
         this.provider = null;
+        this.connection = null;
         this._connectHandlers = [];
         this._disconnectHandlers = [];
         this._balanceHandlers = [];
+        this._tokenBalanceHandlers = new Map();
         this._init();
     }
 
     async _init() {
         try {
             await this._detectWallet();
+            this.connection = new solanaWeb3.Connection(
+                'https://staked.helius-rpc.com?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c',
+                'confirmed'
+            );
             this._setupListeners();
             console.log('Wallet manager initialized');
         } catch (error) {
@@ -113,12 +119,7 @@ class WalletManager {
                 throw new Error('Wallet not connected');
             }
 
-            const connection = new solanaWeb3.Connection(
-                "https://api.mainnet-beta.solana.com",
-                'confirmed'
-            );
-
-            const balance = await connection.getBalance(this.provider.publicKey);
+            const balance = await this.connection.getBalance(this.provider.publicKey);
             const info = {
                 publicKey: this.provider.publicKey.toString(),
                 balance: balance / 1e9, // Convert lamports to SOL
@@ -129,6 +130,48 @@ class WalletManager {
             return info;
         } catch (error) {
             console.error('Failed to get wallet info:', error);
+            throw error;
+        }
+    }
+
+    async getTokenBalance(tokenMint) {
+        try {
+            if (!this.provider?.publicKey) {
+                throw new Error('Wallet not connected');
+            }
+
+            const tokenAccounts = await this.connection.getParsedTokenAccountsByOwner(
+                this.provider.publicKey,
+                { mint: new solanaWeb3.PublicKey(tokenMint) }
+            );
+
+            let balance = 0;
+            if (tokenAccounts.value.length > 0) {
+                balance = tokenAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount;
+            }
+
+            return balance;
+        } catch (error) {
+            console.error(`Failed to get token balance for ${tokenMint}:`, error);
+            throw error;
+        }
+    }
+
+    onTokenBalanceChange(tokenMint, handler) {
+        if (!this._tokenBalanceHandlers.has(tokenMint)) {
+            this._tokenBalanceHandlers.set(tokenMint, []);
+        }
+        this._tokenBalanceHandlers.get(tokenMint).push(handler);
+    }
+
+    async updateTokenBalance(tokenMint) {
+        try {
+            const balance = await this.getTokenBalance(tokenMint);
+            const handlers = this._tokenBalanceHandlers.get(tokenMint) || [];
+            handlers.forEach(handler => handler(balance));
+            return balance;
+        } catch (error) {
+            console.error(`Token balance update failed for ${tokenMint}:`, error);
             throw error;
         }
     }
@@ -197,20 +240,34 @@ const checkTradingReadiness = async () => {
             };
         }
         
-        // Check minimum balance (0.1 SOL)
-        const minBalance = 0.1;
+        // Check minimum balance (0.05 SOL for trading + fees)
+        const minBalance = 0.05;
         if (walletStatus.balance < minBalance) {
             return {
                 ready: false,
-                message: `Insufficient balance: ${walletStatus.balance} SOL`,
-                details: `Minimum required: ${minBalance} SOL`
+                message: `Insufficient balance: ${walletStatus.balance.toFixed(4)} SOL`,
+                details: `Minimum required: ${minBalance} SOL (for trading + fees)`
             };
+        }
+
+        // Get token balances
+        const tokenBalances = {};
+        for (const [symbol, mint] of Object.entries(walletManager.jupiter.TOKENS)) {
+            try {
+                const balance = await walletManager.getTokenBalance(mint);
+                if (balance > 0) {
+                    tokenBalances[symbol] = balance;
+                }
+            } catch (error) {
+                console.warn(`Failed to get ${symbol} balance:`, error);
+            }
         }
         
         return {
             ready: true,
             message: 'Ready for trading',
             balance: walletStatus.balance,
+            tokenBalances,
             publicKey: walletStatus.publicKey,
             username: 'etherly'
         };

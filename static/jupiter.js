@@ -1,7 +1,8 @@
 // Jupiter DEX Integration
 class JupiterDEX {
     constructor() {
-        this.connection = new solanaWeb3.Connection('https://api.mainnet-beta.solana.com');
+        // Use Helius RPC endpoint for better reliability
+        this.connection = new solanaWeb3.Connection('https://staked.helius-rpc.com?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c');
         
         // Token addresses
         this.TOKENS = {
@@ -13,7 +14,8 @@ class JupiterDEX {
         };
         
         // Default settings
-        this.DEFAULT_SLIPPAGE = 50; // 0.5%
+        this.DEFAULT_SLIPPAGE = 100; // 1% slippage for memecoins
+        this.PRIORITY_FEE = 100000; // 0.0001 SOL priority fee
     }
 
     // Get token address by symbol
@@ -77,7 +79,7 @@ class JupiterDEX {
                 quoteResponse: quote,
                 userPublicKey: wallet.publicKey,
                 wrapAndUnwrapSol: true,
-                computeUnitPriceMicroLamports: 1,  // Prioritize transaction
+                computeUnitPriceMicroLamports: this.PRIORITY_FEE,  // Add priority fee
                 asLegacyTransaction: false  // Use versioned transactions
             };
             

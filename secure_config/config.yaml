@@ -26,13 +26,16 @@ wallet:
   private_key_path: "secure_config/wallet.key"
 
 trading:
-  max_position_size: 0.1  # Maximum position size in SOL
-  stop_loss: 0.05        # 5% stop loss
-  take_profit: 0.1       # 10% take profit
-  trailing_stop: 0.03    # 3% trailing stop
-  max_slippage: 0.01     # 1% maximum slippage
-  max_positions: 5       # Maximum number of concurrent positions
-  max_trades_per_day: 10 # Maximum number of trades per day
+  min_sol_balance: 0.05    # Minimum SOL balance to maintain
+  position_size: 0.1       # Position size in SOL for each trade
+  max_slippage: 1.0       # 1% maximum slippage
+  cooldown_minutes: 60     # Minutes to wait between trades
+  priority_fee: 10000     # Priority fee in lamports (0.00001 SOL)
+  max_positions: 5        # Maximum number of concurrent positions
+  max_trades_per_day: 10  # Maximum number of trades per day
+  stop_loss: 5.0         # 5% stop loss
+  take_profit: 10.0      # 10% take profit
+  trailing_stop: 3.0     # 3% trailing stop
   order_timeout: 30      # Order timeout in seconds
 
 monitoring:
