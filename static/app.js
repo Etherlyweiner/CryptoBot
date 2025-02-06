@@ -54,6 +54,7 @@ class TradingBot {
 
     async start() {
         try {
+            console.log('Starting trading bot...');
             this.active = true;
             
             // Initialize RPC connection with fallback
@@ -66,6 +67,7 @@ class TradingBot {
             let connected = false;
             for (const endpoint of rpcEndpoints) {
                 try {
+                    console.log('Attempting to connect to RPC endpoint:', endpoint);
                     await window.walletManager.initializeConnection(endpoint);
                     connected = true;
                     console.log('Connected to RPC endpoint:', endpoint);
@@ -79,16 +81,34 @@ class TradingBot {
                 throw new Error('Failed to connect to any RPC endpoint');
             }
 
+            // Initialize Jupiter
+            console.log('Initializing Jupiter...');
+            if (!window.jupiter) {
+                throw new Error('Jupiter not initialized');
+            }
+            await window.jupiter.testConnection();
+            console.log('Jupiter connection test successful');
+
+            // Check wallet connection
+            console.log('Checking wallet connection...');
+            if (!window.walletManager || !window.walletManager.isConnected()) {
+                throw new Error('Wallet not connected');
+            }
+            console.log('Wallet connection verified');
+
             if (this.settings.autoTrading.enabled) {
+                console.log('Auto trading enabled, starting...');
                 this.startAutoTrading();
+            } else {
+                console.log('Auto trading not enabled');
             }
             
             if (this.onStatusUpdate) this.onStatusUpdate();
+            console.log('Trading bot started successfully');
             
         } catch (error) {
             console.error('Failed to start trading bot:', error);
-            showError('Failed to start trading bot: ' + error.message);
-            this.stop();
+            throw error;
         }
     }
 
@@ -123,11 +143,13 @@ class TradingBot {
 
     async executeAutoTrade() {
         if (!this.active || !this.settings.autoTrading.enabled) {
+            console.log('Auto trading disabled or bot inactive');
             this.stopAutoTrading();
             return;
         }
 
         try {
+            console.log('Executing auto trade...');
             // Reset daily stats if needed
             this.resetDailyStats();
 
@@ -154,19 +176,26 @@ class TradingBot {
             }
 
             // Get market data from Jupiter
+            console.log('Fetching market data...');
             const marketData = await window.jupiter.getMarketData();
             if (!marketData) {
                 console.warn('No market data available');
                 return;
             }
+            console.log('Market data received:', marketData);
 
             // Find trading opportunities
+            console.log('Searching for trading opportunities...');
             const opportunity = await this.findTradingOpportunity(marketData);
             if (opportunity) {
+                console.log('Trading opportunity found:', opportunity);
                 await this.executeTrade(opportunity);
+            } else {
+                console.log('No trading opportunities found');
             }
 
             // Check existing positions
+            console.log('Checking existing positions...');
             await this.checkExistingPositions();
 
         } catch (error) {
@@ -667,9 +696,11 @@ async function connectWallet() {
 
 // Trading control event listeners
 document.getElementById('start-trading').addEventListener('click', async () => {
+    console.log('Start trading button clicked');
     try {
         // Validate settings before starting
         const settings = validateSettings();
+        console.log('Validated settings:', settings);
         if (!settings) {
             showError('Please check your trading settings');
             return;
@@ -680,12 +711,21 @@ document.getElementById('start-trading').addEventListener('click', async () => {
         document.getElementById('stop-trading').disabled = false;
         document.getElementById('trading-status').textContent = 'Trading Status: Starting...';
         
+        // Apply settings to bot
+        Object.assign(tradingBot.settings, settings);
+        console.log('Applied settings to bot:', tradingBot.settings);
+        
         // Start the bot
         await tradingBot.start();
+        console.log('Bot started successfully');
         
         // Update status
         document.getElementById('trading-status').textContent = 'Trading Status: Active';
         showSuccess('Autonomous trading started successfully');
+        
+        // Start checking for trading opportunities
+        tradingBot.startAutoTrading();
+        console.log('Auto trading started');
         
         // Disable settings while trading
         disableSettings(true);
