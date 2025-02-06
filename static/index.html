@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Solana Trading Bot - Memecoin Trading</title>
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@solana/spl-token@0.3.11/lib/index.iife.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@solana/spl_token@0.3.11/lib/index.iife.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@project-serum/anchor@0.26.0/dist/browser/anchor.min.js"></script>
     <script src="https://price-api.jup.ag/v4/quote"></script>
     <script src="https://quote-api.jup.ag/v6/quote"></script>
@@ -15,11 +15,12 @@
             QuoteApi: class QuoteApi {
                 constructor(config) {
                     this.cluster = config.cluster;
+                    this.connection = config.connection;
                 }
                 
                 async getQuote(params) {
                     const { inputMint, outputMint, amount, slippageBps } = params;
-                    const response = await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=${slippageBps}`);
+                    const response = await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=${slippageBps}&rpcEndpoint=${encodeURIComponent('https://staked.helius-rpc.com?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c')}`);
                     const data = await response.json();
                     return { data };
                 }
@@ -27,6 +28,7 @@
             SwapApi: class SwapApi {
                 constructor(config) {
                     this.cluster = config.cluster;
+                    this.connection = config.connection;
                 }
                 
                 async postSwap(params) {
@@ -35,7 +37,10 @@
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify(params)
+                        body: JSON.stringify({
+                            ...params,
+                            rpcEndpoint: 'https://staked.helius-rpc.com?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c'
+                        })
                     });
                     const data = await response.json();
                     return { data };
@@ -201,76 +206,22 @@
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 15px;
-            margin-top: 15px;
+            margin-top: 10px;
         }
-        .token-card {
+        .token-item {
             background: white;
             padding: 15px;
             border-radius: 5px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
         }
-        .token-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-        }
-        .token-metrics {
-            margin-top: 10px;
-            font-size: 14px;
+        .token-name {
+            font-weight: bold;
+            color: #4a148c;
         }
         .token-price {
-            font-size: 16px;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        .token-change {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        .token-change.positive {
-            color: #4caf50;
-        }
-        .token-change.negative {
-            color: #f44336;
-        }
-        .token-volume {
-            color: #666;
-            font-size: 12px;
-            margin-top: 5px;
-        }
-        .token-liquidity {
-            color: #666;
-            font-size: 12px;
-        }
-        .new-launch-badge {
-            background: #ff9800;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 12px;
-            margin-left: 5px;
-        }
-        .opportunity-badge {
-            background: #4caf50;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 12px;
-            margin-left: 5px;
-        }
-        .refresh-button {
-            background: #1a237e;
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 5px;
-            cursor: pointer;
+            font-family: monospace;
             font-size: 14px;
-            margin-top: 10px;
-        }
-        .refresh-button:hover {
-            background: #283593;
+            margin: 5px 0;
         }
         .token-change {
             font-size: 12px;
@@ -285,11 +236,6 @@
             background: #ffebee;
             color: #c62828;
         }
-        .token-price {
-            font-family: monospace;
-            font-size: 14px;
-            margin: 5px 0;
-        }
     </style>
 </head>
 <body>
@@ -298,89 +244,23 @@
         <p>Trade memecoins safely using Jupiter DEX aggregator.</p>
         
         <div class="wallet-info">
-            <h3>Your Wallet</h3>
-            <p>Username: <span class="username">etherlyweiner</span></p>
-            <p>Address: <span class="wallet-address"></span></p>
-            <p>Balance: <span class="wallet-balance">0 SOL</span></p>
-            <button id="connectButton" onclick="connectWallet()" class="connect-button">Connect Wallet</button>
+            <h3>Wallet Status</h3>
+            <div id="walletStatus">Not connected</div>
+            <button id="connectWallet">Connect Wallet</button>
         </div>
-        
-        <div id="walletStatus" class="status" style="display: none;"></div>
-        
-        <div id="status" class="status" style="display: none;"></div>
-        
+
         <div id="tradingPanel" class="trading-panel" style="display: none;">
             <div class="market-overview">
                 <div class="market-card">
                     <h3>Trending Tokens</h3>
                     <div id="trendingTokens" class="token-grid">
-                        <!-- Dynamically populated -->
+                        <!-- Trending tokens will be populated here -->
                     </div>
                 </div>
                 <div class="market-card">
                     <h3>New Launches</h3>
                     <div id="newLaunches" class="token-grid">
-                        <!-- Dynamically populated -->
-                    </div>
-                </div>
-                <div class="market-card">
-                    <h3>Trading Bot Status</h3>
-                    <div class="bot-controls">
-                        <button onclick="tradingBot.start()" id="startBot" disabled>Start Bot</button>
-                        <button onclick="tradingBot.stop()" id="stopBot" disabled>Stop Bot</button>
-                    </div>
-                    <div class="bot-status">
-                        <p>Status: <span id="botStatus">Inactive</span></p>
-                        <p>Active Trades: <span id="activeTrades">0</span></p>
-                        <p>Total Profit: <span id="totalProfit">0.00 SOL</span></p>
-                    </div>
-                </div>
-                <div class="market-card">
-                    <h3>Market Overview</h3>
-                    <div id="marketOverview">
-                        <div class="token-grid">
-                            <div class="token-card" id="bonkCard">
-                                <h4>BONK</h4>
-                                <div class="token-metrics">Loading...</div>
-                            </div>
-                            <div class="token-card" id="wifCard">
-                                <h4>WIF</h4>
-                                <div class="token-metrics">Loading...</div>
-                            </div>
-                            <div class="token-card" id="myroCard">
-                                <h4>MYRO</h4>
-                                <div class="token-metrics">Loading...</div>
-                            </div>
-                            <div class="token-card" id="popcatCard">
-                                <h4>POPCAT</h4>
-                                <div class="token-metrics">Loading...</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="market-card">
-                    <h3>Price Monitor</h3>
-                    <div class="token-grid">
-                        <div class="token-item">
-                            <div class="token-name">BONK</div>
-                            <div id="bonkPrice" class="token-price">Loading...</div>
-                            <div id="bonkChange" class="token-change">-</div>
-                        </div>
-                        <div class="token-item">
-                            <div class="token-name">WIF</div>
-                            <div id="wifPrice" class="token-price">Loading...</div>
-                            <div id="wifChange" class="token-change">-</div>
-                        </div>
-                        <div class="token-item">
-                            <div class="token-name">MYRO</div>
-                            <div id="myroPrice" class="token-price">Loading...</div>
-                            <div id="myroChange" class="token-change">-</div>
-                        </div>
-                        <div class="token-item">
-                            <div class="token-name">POPCAT</div>
-                            <div id="popcatPrice" class="token-price">Loading...</div>
-                            <div id="popcatChange" class="token-change">-</div>
-                        </div>
+                        <!-- New launches will be populated here -->
                     </div>
                 </div>
                 <div class="market-card">
@@ -438,7 +318,7 @@
         // Initialize status update handler
         function updateWalletStatus(status) {
             walletConnected = status === 'connected';
-            const connectButton = document.getElementById('connectButton');
+            const connectButton = document.getElementById('connectWallet');
             const walletStatus = document.getElementById('walletStatus');
             
             if (walletConnected) {
@@ -467,7 +347,7 @@
         // Wallet connection handler
         async function connectWallet() {
             try {
-                const connectButton = document.getElementById('connectButton');
+                const connectButton = document.getElementById('connectWallet');
                 connectButton.disabled = true;
                 connectButton.textContent = 'Connecting...';
                 
@@ -485,25 +365,11 @@
                 if (!jupiter) {
                     jupiter = new JupiterDEX();
                     await jupiter.initialize();
-                    
-                    // Start price monitoring
-                    if (priceUpdateInterval) {
-                        clearInterval(priceUpdateInterval);
-                    }
-                    
-                    priceUpdateInterval = jupiter.monitorPrice(
-                        jupiter.TOKENS.BONK,
-                        (price, change, info) => {
-                            document.getElementById('bonkPrice').textContent = `$${price.toFixed(8)}`;
-                            document.getElementById('bonkChange').textContent = `${change.toFixed(2)}%`;
-                            document.getElementById('bonkChange').className = change >= 0 ? 'positive' : 'negative';
-                        }
-                    );
                 }
                 
             } catch (error) {
                 console.error('Failed to connect wallet:', error);
-                const connectButton = document.getElementById('connectButton');
+                const connectButton = document.getElementById('connectWallet');
                 connectButton.disabled = false;
                 connectButton.textContent = 'Connect Wallet';
                 
