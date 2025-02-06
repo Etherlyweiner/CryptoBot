@@ -4,30 +4,38 @@ class WalletManager {
         this.connection = null;
         this.connected = false;
         this.onStatusUpdate = null;
+        this._init();  // Initialize on construction
     }
 
     async _init() {
         try {
             // Initialize Solana connection with fallback RPC endpoints
             const rpcEndpoints = [
-                'https://api.mainnet-beta.solana.com',
-                'https://solana-mainnet.g.alchemy.com/v2/demo',
-                'https://rpc.ankr.com/solana',
-                'https://solana-api.projectserum.com'
+                'https://solana-mainnet.rpc.extrnode.com',
+                'https://mainnet.helius-rpc.com/?api-key=1d22a422-51a8-4df6-8f80-c32c34827429',
+                'https://neat-hidden-sanctuary.solana-mainnet.discover.quiknode.pro/2af5315d336f9ae920028bbb6ba4a6e5dc652a03/',
+                'https://solana-mainnet.g.alchemy.com/v2/demo'
             ];
 
             for (const endpoint of rpcEndpoints) {
                 try {
-                    const connection = new solanaWeb3.Connection(endpoint, {
-                        commitment: 'confirmed',
-                        wsEndpoint: endpoint.replace('https://', 'wss://')
-                    });
+                    const connection = new solanaWeb3.Connection(
+                        endpoint,
+                        { 
+                            commitment: 'confirmed',
+                            confirmTransactionInitialTimeout: 60000,
+                            disableRetryOnRateLimit: false,
+                            fetch: window.fetch
+                        }
+                    );
                     
-                    // Test connection
-                    await connection.getSlot();
-                    this.connection = connection;
-                    console.log('Solana connection established to:', endpoint);
-                    break;
+                    // Test connection with a simple call
+                    const blockHeight = await connection.getBlockHeight();
+                    if (blockHeight > 0) {
+                        this.connection = connection;
+                        console.log('Solana connection established to:', endpoint);
+                        break;
+                    }
                 } catch (error) {
                     console.warn(`Failed to connect to ${endpoint}, trying next...`);
                 }
@@ -125,11 +133,24 @@ class WalletManager {
             const publicKey = this.provider.publicKey.toString();
             console.log('Getting wallet info for:', publicKey);
 
-            // Get SOL balance
-            const balance = await this.connection.getBalance(
-                new solanaWeb3.PublicKey(publicKey),
-                'confirmed'
-            );
+            // Get SOL balance with retries
+            let balance = 0;
+            let retries = 3;
+            
+            while (retries > 0) {
+                try {
+                    balance = await this.connection.getBalance(
+                        new solanaWeb3.PublicKey(publicKey),
+                        'confirmed'
+                    );
+                    break;
+                } catch (error) {
+                    console.warn(`Failed to get balance, retries left: ${retries-1}`);
+                    retries--;
+                    if (retries === 0) throw error;
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
             
             const solBalance = balance / solanaWeb3.LAMPORTS_PER_SOL;
 
@@ -149,12 +170,12 @@ class WalletManager {
 }
 
 // Initialize wallet manager
-const walletManager = new WalletManager();
+window.walletManager = new WalletManager();
 
 // Check if wallet is ready for trading
 const checkTradingReadiness = async () => {
     try {
-        const walletStatus = await walletManager.connect();
+        const walletStatus = await window.walletManager.connect();
         
         if (!walletStatus) {
             return {
@@ -176,10 +197,10 @@ const checkTradingReadiness = async () => {
 
         // Get token balances
         const tokenBalances = {};
-        if (walletManager.jupiter && walletManager.jupiter.TOKENS) {  
-            for (const [symbol, mint] of Object.entries(walletManager.jupiter.TOKENS)) {
+        if (window.walletManager.jupiter && window.walletManager.jupiter.TOKENS) {  
+            for (const [symbol, mint] of Object.entries(window.walletManager.jupiter.TOKENS)) {
                 try {
-                    const balance = await walletManager.getTokenBalance(mint);
+                    const balance = await window.walletManager.getTokenBalance(mint);
                     if (balance > 0) {
                         tokenBalances[symbol] = balance;
                     }

@@ -381,8 +381,14 @@
         
         // Initialize components after DOM loads
         document.addEventListener('DOMContentLoaded', () => {
-            tradingBot = new TradingBot();
-            walletManager.onStatusUpdate = updateWalletStatus;
+            // Wait for wallet manager to be available
+            const checkWalletManager = setInterval(() => {
+                if (window.walletManager) {
+                    clearInterval(checkWalletManager);
+                    window.walletManager.onStatusUpdate = updateWalletStatus;
+                    tradingBot = new TradingBot();
+                }
+            }, 100);
         });
         
         // Wallet connection handler
@@ -392,36 +398,35 @@
                 connectButton.disabled = true;
                 connectButton.textContent = 'Connecting...';
                 
-                const walletInfo = await walletManager.connect();
+                // Connect wallet
+                const walletInfo = await window.walletManager.connect();
                 
                 // Update UI with wallet info
                 document.querySelector('.wallet-address').textContent = walletInfo.publicKey;
                 document.querySelector('.wallet-balance').textContent = `${walletInfo.balance.toFixed(4)} SOL`;
-                connectButton.textContent = 'Disconnect';
                 
                 // Show trading panel
                 document.getElementById('tradingPanel').style.display = 'block';
-                walletConnected = true;
                 
                 // Initialize Jupiter
-                jupiter = new JupiterDEX();
-                await jupiter.initialize();
-                
-                // Start price updates
-                await updateTokenPrices();
-                priceUpdateInterval = setInterval(updateTokenPrices, 30000);
-                
-                // Enable trading bot controls
-                document.getElementById('startBot').disabled = false;
-                
-                // Initialize trading settings from inputs
-                tradingBot.tradeSize = parseFloat(document.getElementById('tradeSize').value);
-                tradingBot.maxSlippage = parseFloat(document.getElementById('maxSlippage').value);
-                tradingBot.profitTarget = parseFloat(document.getElementById('profitTarget').value);
-                tradingBot.stopLoss = parseFloat(document.getElementById('stopLoss').value);
-                
-                // Setup trading settings listeners
-                setupTradingSettings();
+                if (!jupiter) {
+                    jupiter = new JupiterDEX();
+                    await jupiter.initialize();
+                    
+                    // Start price monitoring
+                    if (priceUpdateInterval) {
+                        clearInterval(priceUpdateInterval);
+                    }
+                    
+                    priceUpdateInterval = jupiter.monitorPrice(
+                        jupiter.TOKENS.BONK,
+                        (price, change, info) => {
+                            document.getElementById('bonkPrice').textContent = `$${price.toFixed(8)}`;
+                            document.getElementById('bonkChange').textContent = `${change.toFixed(2)}%`;
+                            document.getElementById('bonkChange').className = change >= 0 ? 'positive' : 'negative';
+                        }
+                    );
+                }
                 
             } catch (error) {
                 console.error('Failed to connect wallet:', error);
@@ -429,15 +434,8 @@
                 connectButton.disabled = false;
                 connectButton.textContent = 'Connect Wallet';
                 
-                // Show error to user
-                const statusDiv = document.getElementById('status');
-                statusDiv.style.display = 'block';
-                statusDiv.className = 'status error';
-                statusDiv.innerHTML = `
-                    <h3>❌ Connection Failed</h3>
-                    <p>${error.message}</p>
-                    <p>Please make sure Phantom wallet is installed and unlocked.</p>
-                `;
+                document.getElementById('status').textContent = `Error: ${error.message}`;
+                document.getElementById('status').style.display = 'block';
             }
         }
 
