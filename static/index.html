@@ -10,7 +10,7 @@
     <script defer src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@solana/spl_token@0.3.11/lib/index.iife.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@project-serum/anchor@0.26.0/dist/browser/anchor.min.js"></script>
-    
+    <script defer src="jupiter-api.js"></script>
     <!-- Custom scripts -->
     <script defer src="wallet.js"></script>
     <script defer src="jupiter.js"></script>
@@ -233,15 +233,50 @@
         /* High contrast mode support */
         @media (forced-colors: active) {
             button {
+                forced-color-adjust: none;
                 border: 2px solid ButtonText;
+                background-color: ButtonFace;
+                color: ButtonText;
+            }
+
+            button:disabled {
+                opacity: 0.5;
             }
 
             .status.success {
+                forced-color-adjust: none;
                 border: 2px solid ButtonText;
+                background-color: Mark;
+                color: MarkText;
             }
 
             .position-row {
+                forced-color-adjust: none;
                 border: 1px solid ButtonText;
+            }
+
+            .profit {
+                color: Mark;
+            }
+
+            .loss {
+                color: Mark;
+            }
+
+            input[type="number"] {
+                forced-color-adjust: none;
+                border: 1px solid ButtonText;
+                background-color: Field;
+                color: FieldText;
+            }
+
+            a {
+                forced-color-adjust: none;
+                color: LinkText;
+            }
+
+            a:visited {
+                color: VisitedText;
             }
         }
     </style>
