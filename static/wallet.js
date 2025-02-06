@@ -11,15 +11,22 @@ class WalletManager {
             // Initialize Solana connection with fallback RPC endpoints
             const rpcEndpoints = [
                 'https://api.mainnet-beta.solana.com',
-                'https://solana-api.projectserum.com',
-                'https://rpc.ankr.com/solana'
+                'https://solana-mainnet.g.alchemy.com/v2/demo',
+                'https://rpc.ankr.com/solana',
+                'https://solana-api.projectserum.com'
             ];
 
             for (const endpoint of rpcEndpoints) {
                 try {
-                    this.connection = new solanaWeb3.Connection(endpoint);
-                    await this.connection.getVersion();
-                    console.log('Solana connection established');
+                    const connection = new solanaWeb3.Connection(endpoint, {
+                        commitment: 'confirmed',
+                        wsEndpoint: endpoint.replace('https://', 'wss://')
+                    });
+                    
+                    // Test connection
+                    await connection.getSlot();
+                    this.connection = connection;
+                    console.log('Solana connection established to:', endpoint);
                     break;
                 } catch (error) {
                     console.warn(`Failed to connect to ${endpoint}, trying next...`);
@@ -47,7 +54,7 @@ class WalletManager {
 
             // Setup listeners
             this.provider.on('connect', () => {
-                console.log('Wallet connected event:', arguments);
+                console.log('Wallet connected event');
                 this.connected = true;
                 if (this.onStatusUpdate) {
                     this.onStatusUpdate('connected');
@@ -119,8 +126,12 @@ class WalletManager {
             console.log('Getting wallet info for:', publicKey);
 
             // Get SOL balance
-            const balance = await this.connection.getBalance(this.provider.publicKey);
-            const solBalance = balance / 1e9; // Convert lamports to SOL
+            const balance = await this.connection.getBalance(
+                new solanaWeb3.PublicKey(publicKey),
+                'confirmed'
+            );
+            
+            const solBalance = balance / solanaWeb3.LAMPORTS_PER_SOL;
 
             const info = {
                 publicKey,

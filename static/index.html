@@ -254,8 +254,10 @@
             <p>Username: <span class="username">etherlyweiner</span></p>
             <p>Address: <span class="wallet-address"></span></p>
             <p>Balance: <span class="wallet-balance">0 SOL</span></p>
-            <button onclick="connectWallet()" class="connect-button">Connect Wallet</button>
+            <button id="connectButton" onclick="connectWallet()" class="connect-button">Connect Wallet</button>
         </div>
+        
+        <div id="walletStatus" class="status" style="display: none;"></div>
         
         <div id="status" class="status" style="display: none;"></div>
         
@@ -359,16 +361,34 @@
         let jupiter;
         let priceUpdateInterval;
         let tradingBot;
+
+        // Initialize status update handler
+        function updateWalletStatus(status) {
+            walletConnected = status === 'connected';
+            const connectButton = document.getElementById('connectButton');
+            const walletStatus = document.getElementById('walletStatus');
+            
+            if (walletConnected) {
+                connectButton.textContent = 'Disconnect';
+                walletStatus.textContent = 'Connected';
+                walletStatus.className = 'status-connected';
+            } else {
+                connectButton.textContent = 'Connect Wallet';
+                walletStatus.textContent = 'Disconnected';
+                walletStatus.className = 'status-disconnected';
+            }
+        }
         
         // Initialize components after DOM loads
         document.addEventListener('DOMContentLoaded', () => {
             tradingBot = new TradingBot();
+            walletManager.onStatusUpdate = updateWalletStatus;
         });
         
         // Wallet connection handler
         async function connectWallet() {
             try {
-                const connectButton = document.querySelector('.connect-button');
+                const connectButton = document.getElementById('connectButton');
                 connectButton.disabled = true;
                 connectButton.textContent = 'Connecting...';
                 
@@ -377,7 +397,7 @@
                 // Update UI with wallet info
                 document.querySelector('.wallet-address').textContent = walletInfo.publicKey;
                 document.querySelector('.wallet-balance').textContent = `${walletInfo.balance.toFixed(4)} SOL`;
-                connectButton.textContent = 'Connected';
+                connectButton.textContent = 'Disconnect';
                 
                 // Show trading panel
                 document.getElementById('tradingPanel').style.display = 'block';
@@ -405,7 +425,7 @@
                 
             } catch (error) {
                 console.error('Failed to connect wallet:', error);
-                const connectButton = document.querySelector('.connect-button');
+                const connectButton = document.getElementById('connectButton');
                 connectButton.disabled = false;
                 connectButton.textContent = 'Connect Wallet';
                 
