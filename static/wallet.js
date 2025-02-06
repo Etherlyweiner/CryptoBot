@@ -5,6 +5,7 @@ class WalletManager {
     constructor() {
         this.provider = null;
         this.connection = null;
+        this.jupiter = null;  
         this._connectHandlers = [];
         this._disconnectHandlers = [];
         this._balanceHandlers = [];
@@ -19,6 +20,7 @@ class WalletManager {
                 'https://staked.helius-rpc.com?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c',
                 'confirmed'
             );
+            this.jupiter = new JupiterDEX();  
             this._setupListeners();
             console.log('Wallet manager initialized');
         } catch (error) {
@@ -252,14 +254,16 @@ const checkTradingReadiness = async () => {
 
         // Get token balances
         const tokenBalances = {};
-        for (const [symbol, mint] of Object.entries(walletManager.jupiter.TOKENS)) {
-            try {
-                const balance = await walletManager.getTokenBalance(mint);
-                if (balance > 0) {
-                    tokenBalances[symbol] = balance;
+        if (walletManager.jupiter && walletManager.jupiter.TOKENS) {  
+            for (const [symbol, mint] of Object.entries(walletManager.jupiter.TOKENS)) {
+                try {
+                    const balance = await walletManager.getTokenBalance(mint);
+                    if (balance > 0) {
+                        tokenBalances[symbol] = balance;
+                    }
+                } catch (error) {
+                    console.warn(`Failed to get ${symbol} balance:`, error);
                 }
-            } catch (error) {
-                console.warn(`Failed to get ${symbol} balance:`, error);
             }
         }
         
