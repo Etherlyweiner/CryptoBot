@@ -16,380 +16,92 @@
     <script defer src="jupiter.js"></script>
     <script defer src="birdeye.js"></script>
     <script defer src="app.js"></script>
-    
-    <style>
-        :root {
-            --primary-color: #2196F3;
-            --success-color: #4CAF50;
-            --error-color: #f44336;
-            --text-color: #333;
-            --background-color: #f5f5f5;
-            --card-background: white;
-            --border-radius: 8px;
-            --spacing: 20px;
-            --focus-outline: 3px solid #2196F3;
-        }
-
-        /* Reset and base styles */
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.5;
-            color: var(--text-color);
-            background-color: var(--background-color);
-            padding: var(--spacing);
-            min-height: 100vh;
-        }
-
-        /* Accessibility improvements */
-        :focus {
-            outline: var(--focus-outline);
-            outline-offset: 2px;
-        }
-
-        :focus:not(:focus-visible) {
-            outline: none;
-        }
-
-        /* Skip to main content link */
-        .skip-link {
-            position: absolute;
-            top: -40px;
-            left: 0;
-            background: var(--primary-color);
-            color: white;
-            padding: 8px;
-            z-index: 100;
-        }
-
-        .skip-link:focus {
-            top: 0;
-        }
-
-        /* Container */
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: var(--card-background);
-            padding: var(--spacing);
-            border-radius: var(--border-radius);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        /* Typography */
-        h1, h2 {
-            color: var(--text-color);
-            margin-bottom: var(--spacing);
-        }
-
-        /* Status indicators */
-        .status {
-            display: inline-block;
-            padding: 5px 10px;
-            border-radius: 4px;
-            background-color: #f0f0f0;
-            margin: 10px 0;
-        }
-
-        .status.success {
-            background-color: var(--success-color);
-            color: white;
-        }
-
-        /* Buttons */
-        button {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            background-color: var(--primary-color);
-            color: white;
-            cursor: pointer;
-            margin: 5px;
-            font-size: 1rem;
-            transition: background-color 0.2s, transform 0.1s;
-        }
-
-        button:hover {
-            background-color: #1976D2;
-        }
-
-        button:active {
-            transform: scale(0.98);
-        }
-
-        button:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        /* Form elements */
-        .settings-group {
-            margin: var(--spacing) 0;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 5px;
-            color: #666;
-            font-weight: 500;
-        }
-
-        input[type="number"] {
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            width: 120px;
-            font-size: 1rem;
-        }
-
-        input[type="number"]:focus {
-            border-color: var(--primary-color);
-        }
-
-        /* Trading panel */
-        .trading-panel {
-            margin-top: var(--spacing);
-            display: none;
-            animation: fadeIn 0.3s ease-in;
-        }
-
-        /* Positions */
-        .positions {
-            margin-top: var(--spacing);
-        }
-
-        .position-row {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 10px;
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-            align-items: center;
-        }
-
-        .position-row:hover {
-            background-color: #f9f9f9;
-        }
-
-        /* Status colors */
-        .profit {
-            color: var(--success-color);
-            font-weight: 500;
-        }
-
-        .loss {
-            color: var(--error-color);
-            font-weight: 500;
-        }
-
-        .close-position {
-            background-color: var(--error-color);
-        }
-
-        .no-positions {
-            color: #666;
-            font-style: italic;
-            padding: 10px;
-        }
-
-        /* Error messages */
-        .error-message {
-            color: var(--error-color);
-            background-color: #ffebee;
-            padding: 10px;
-            border-radius: 4px;
-            margin: 10px 0;
-            display: none;
-        }
-
-        /* Animations */
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        /* Responsive design */
-        @media (max-width: 768px) {
-            .position-row {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 5px;
-            }
-
-            .container {
-                padding: 10px;
-            }
-
-            input[type="number"] {
-                width: 100%;
-            }
-        }
-
-        /* High contrast mode support */
-        @media (forced-colors: active) {
-            button {
-                forced-color-adjust: none;
-                border: 2px solid ButtonText;
-                background-color: ButtonFace;
-                color: ButtonText;
-            }
-
-            button:disabled {
-                opacity: 0.5;
-            }
-
-            .status.success {
-                forced-color-adjust: none;
-                border: 2px solid ButtonText;
-                background-color: Mark;
-                color: MarkText;
-            }
-
-            .position-row {
-                forced-color-adjust: none;
-                border: 1px solid ButtonText;
-            }
-
-            .profit {
-                color: Mark;
-            }
-
-            .loss {
-                color: Mark;
-            }
-
-            input[type="number"] {
-                forced-color-adjust: none;
-                border: 1px solid ButtonText;
-                background-color: Field;
-                color: FieldText;
-            }
-
-            a {
-                forced-color-adjust: none;
-                color: LinkText;
-            }
-
-            a:visited {
-                color: VisitedText;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <a href="#main" class="skip-link">Skip to main content</a>
     
-    <div class="container">
+    <div class="container" role="application">
         <main id="main">
             <h1>Solana Trading Bot - Memecoin Trading</h1>
             <p>Trade memecoins safely using Jupiter DEX aggregator.</p>
             
             <!-- Wallet section -->
-            <section aria-labelledby="wallet-section">
-                <h2 id="wallet-section" class="visually-hidden">Wallet Connection</h2>
-                <button id="connectWallet" onclick="connectWallet()" aria-label="Connect wallet">
-                    Connect Wallet
-                </button>
-                <div id="walletStatus" class="status" role="status" aria-live="polite">
-                    Not connected
+            <section aria-labelledby="wallet-heading">
+                <h2 id="wallet-heading">Wallet Connection</h2>
+                <button id="connect-wallet" aria-label="Connect wallet">Connect Wallet</button>
+                <div id="wallet-status" role="status" aria-live="polite"></div>
+            </section>
+
+            <!-- Trading settings -->
+            <section aria-labelledby="settings-heading">
+                <h2 id="settings-heading">Trading Settings</h2>
+                <div class="settings-group">
+                    <label for="max-slippage">Maximum Slippage (%)</label>
+                    <input type="number" id="max-slippage" min="0" max="100" step="0.1" value="1.0" 
+                           aria-describedby="slippage-description">
+                    <div id="slippage-description" class="sr-only">Enter maximum allowed slippage percentage between 0 and 100</div>
                 </div>
             </section>
-            
+
             <!-- Trading panel -->
-            <section id="tradingPanel" class="trading-panel" aria-labelledby="trading-section">
-                <h2 id="trading-section">Trading Settings</h2>
+            <section aria-labelledby="trading-heading" class="trading-panel">
+                <h2 id="trading-heading">Trading Panel</h2>
+                <div class="error-message" role="alert" aria-live="assertive"></div>
                 
-                <!-- Trading settings -->
-                <form id="tradingSettings" class="settings-group">
-                    <div class="form-group">
-                        <label for="tradeSize">Trade Size (SOL):</label>
-                        <input type="number" 
-                               id="tradeSize" 
-                               min="0.1" 
-                               step="0.1" 
-                               value="0.1"
-                               aria-describedby="tradeSizeHelp">
-                        <small id="tradeSizeHelp">Minimum trade size is 0.1 SOL</small>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="maxSlippage">Max Slippage (%):</label>
-                        <input type="number" 
-                               id="maxSlippage" 
-                               min="0.1" 
-                               step="0.1" 
-                               value="1"
-                               aria-describedby="slippageHelp">
-                        <small id="slippageHelp">Maximum allowed price slippage</small>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="profitTarget">Profit Target (%):</label>
-                        <input type="number" 
-                               id="profitTarget" 
-                               min="1" 
-                               step="1" 
-                               value="10"
-                               aria-describedby="profitHelp">
-                        <small id="profitHelp">Target profit percentage for auto-sell</small>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="stopLoss">Stop Loss (%):</label>
-                        <input type="number" 
-                               id="stopLoss" 
-                               min="1" 
-                               step="1" 
-                               value="5"
-                               aria-describedby="stopLossHelp">
-                        <small id="stopLossHelp">Maximum allowed loss percentage</small>
-                    </div>
-                </form>
-                
-                <!-- Bot controls -->
-                <div class="bot-controls" role="group" aria-labelledby="bot-controls">
-                    <h3 id="bot-controls" class="visually-hidden">Bot Controls</h3>
-                    <button id="startBot" 
-                            onclick="tradingBot.start()" 
-                            aria-label="Start trading bot">
-                        Start Bot
-                    </button>
-                    <button id="stopBot" 
-                            onclick="tradingBot.stop()" 
-                            disabled 
-                            aria-label="Stop trading bot">
-                        Stop Bot
-                    </button>
-                    <div class="bot-status" role="status" aria-live="polite">
-                        <span>Status: <span id="botStatus">Inactive</span></span>
-                        <span>Active Trades: <span id="activeTrades">0</span></span>
+                <div class="token-inputs">
+                    <div class="input-group">
+                        <label for="token-address">Token Address</label>
+                        <input type="text" id="token-address" 
+                               aria-describedby="token-address-description"
+                               placeholder="Enter Solana token address">
+                        <div id="token-address-description" class="sr-only">Enter the Solana token address you want to trade</div>
                     </div>
                 </div>
-                
-                <!-- Positions -->
-                <section class="positions" aria-labelledby="positions-section">
-                    <h2 id="positions-section">Active Positions</h2>
-                    <div id="positionsList" 
-                         role="table" 
-                         aria-label="Active trading positions">
-                        <div class="no-positions" role="row">No active positions</div>
-                    </div>
-                </section>
+
+                <div class="trading-actions">
+                    <button id="buy-token" aria-label="Buy token">Buy</button>
+                    <button id="sell-token" aria-label="Sell token">Sell</button>
+                </div>
             </section>
-            
-            <!-- Status messages -->
-            <div id="status" 
-                 class="error-message" 
-                 role="alert" 
-                 aria-live="assertive" 
-                 style="display: none;">
-            </div>
+
+            <!-- Positions table -->
+            <section aria-labelledby="positions-heading">
+                <h2 id="positions-heading">Active Positions</h2>
+                <div role="table" aria-label="Trading positions" class="positions">
+                    <div role="row" class="position-header">
+                        <div role="columnheader">Token</div>
+                        <div role="columnheader">Amount</div>
+                        <div role="columnheader">Entry Price</div>
+                        <div role="columnheader">Current Price</div>
+                        <div role="columnheader">P/L</div>
+                        <div role="columnheader">Actions</div>
+                    </div>
+                    <div id="positions-list">
+                        <div role="row" class="no-positions">
+                            <div role="cell">No active positions</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
+
+    <!-- Templates for dynamic content -->
+    <template id="position-row-template">
+        <div role="row" class="position-row">
+            <div role="cell" class="token-name"></div>
+            <div role="cell" class="token-amount"></div>
+            <div role="cell" class="entry-price"></div>
+            <div role="cell" class="current-price"></div>
+            <div role="cell" class="pnl"></div>
+            <div role="cell" class="actions">
+                <button class="close-position" aria-label="Close position">Close</button>
+            </div>
+        </div>
+    </template>
+
+    <!-- Screen reader only announcements -->
+    <div aria-live="polite" class="sr-only" id="trading-announcements"></div>
 </body>
 </html>

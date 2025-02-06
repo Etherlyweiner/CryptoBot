@@ -44,41 +44,77 @@ const tradingBot = new TradingBot();
 // Status update handler
 function updateWalletStatus(status) {
     walletConnected = status === 'connected';
-    const connectButton = document.getElementById('connectWallet');
-    const walletStatus = document.getElementById('walletStatus');
-    const tradingPanel = document.getElementById('tradingPanel');
     
-    if (walletConnected) {
-        connectButton.textContent = 'Connected';
-        connectButton.disabled = true;
-        walletStatus.textContent = 'Connected';
-        walletStatus.className = 'status success';
-        tradingPanel.style.display = 'block';
+    // Safely get elements with fallbacks
+    const connectButton = document.getElementById('connect-wallet');
+    const walletStatus = document.getElementById('wallet-status');
+    const tradingPanel = document.querySelector('.trading-panel');
+    
+    // Only proceed if elements exist
+    if (connectButton && walletStatus && tradingPanel) {
+        if (walletConnected) {
+            connectButton.textContent = 'Connected';
+            connectButton.disabled = true;
+            walletStatus.textContent = 'Connected';
+            walletStatus.className = 'status success';
+            tradingPanel.style.display = 'block';
+            
+            // Announce to screen readers
+            const announcement = document.getElementById('trading-announcements');
+            if (announcement) {
+                announcement.textContent = 'Wallet connected successfully. Trading panel is now available.';
+            }
+        } else {
+            connectButton.textContent = 'Connect Wallet';
+            connectButton.disabled = false;
+            walletStatus.textContent = 'Not connected';
+            walletStatus.className = 'status';
+            tradingPanel.style.display = 'none';
+            
+            // Announce to screen readers
+            const announcement = document.getElementById('trading-announcements');
+            if (announcement) {
+                announcement.textContent = 'Wallet disconnected. Please connect your wallet to start trading.';
+            }
+        }
     } else {
-        connectButton.textContent = 'Connect Wallet';
-        connectButton.disabled = false;
-        walletStatus.textContent = 'Not connected';
-        walletStatus.className = 'status';
-        tradingPanel.style.display = 'none';
+        console.warn('Some UI elements are missing:', {
+            connectButton: !!connectButton,
+            walletStatus: !!walletStatus,
+            tradingPanel: !!tradingPanel
+        });
     }
 }
 
 // Error handling
 function showError(message) {
-    const statusDiv = document.getElementById('status');
-    statusDiv.textContent = message;
-    statusDiv.style.display = 'block';
-    
-    // Hide after 5 seconds
-    setTimeout(() => {
-        statusDiv.style.display = 'none';
-    }, 5000);
+    const errorDiv = document.querySelector('.error-message');
+    if (errorDiv) {
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+        
+        // Announce error to screen readers
+        const announcement = document.getElementById('trading-announcements');
+        if (announcement) {
+            announcement.textContent = 'Error: ' + message;
+        }
+        
+        // Hide after 5 seconds
+        setTimeout(() => {
+            errorDiv.style.display = 'none';
+        }, 5000);
+    }
 }
 
 // Wallet connection handler
 async function connectWallet() {
+    const connectButton = document.getElementById('connect-wallet');
+    if (!connectButton) {
+        console.error('Connect wallet button not found');
+        return;
+    }
+
     try {
-        const connectButton = document.getElementById('connectWallet');
         connectButton.disabled = true;
         connectButton.textContent = 'Connecting...';
         
@@ -92,9 +128,10 @@ async function connectWallet() {
     } catch (error) {
         console.error('Failed to connect wallet:', error);
         showError('Failed to connect wallet: ' + error.message);
-        const connectButton = document.getElementById('connectWallet');
-        connectButton.disabled = false;
-        connectButton.textContent = 'Connect Wallet';
+        if (connectButton) {
+            connectButton.disabled = false;
+            connectButton.textContent = 'Connect Wallet';
+        }
     }
 }
 
@@ -162,12 +199,23 @@ tradingBot.onStatusUpdate = () => {
 
 // Initialize everything when page loads
 document.addEventListener('DOMContentLoaded', () => {
+    // Set up event listeners
+    const connectButton = document.getElementById('connect-wallet');
+    if (connectButton) {
+        connectButton.addEventListener('click', connectWallet);
+    }
+
     // Wait for wallet manager to be available
     const checkWalletManager = setInterval(() => {
         if (window.walletManager) {
             clearInterval(checkWalletManager);
+            
+            // Set up wallet status updates
             window.walletManager.onStatusUpdate = updateWalletStatus;
+            
+            // Check initial connection status
             updateWalletStatus(window.walletManager.isConnected() ? 'connected' : 'disconnected');
+            
             setupTradingSettings();
             updatePositionsDisplay();
         }
