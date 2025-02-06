@@ -3,488 +3,358 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Solana Trading Bot for automated memecoin trading using Jupiter DEX">
     <title>Solana Trading Bot - Memecoin Trading</title>
-    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@solana/spl_token@0.3.11/lib/index.iife.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@project-serum/anchor@0.26.0/dist/browser/anchor.min.js"></script>
-    <script>
-        // Initialize Jupiter API globally
-        window.JupiterApi = {
-            QuoteApi: class QuoteApi {
-                constructor(config) {
-                    this.cluster = config.cluster;
-                    this.connection = config.connection;
-                }
-                
-                async getQuote(params) {
-                    const { inputMint, outputMint, amount, slippageBps } = params;
-                    const response = await fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=${slippageBps}`, {
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-                    const data = await response.json();
-                    return { data };
-                }
-            },
-            SwapApi: class SwapApi {
-                constructor(config) {
-                    this.cluster = config.cluster;
-                    this.connection = config.connection;
-                }
-                
-                async postSwap(params) {
-                    const response = await fetch('https://quote-api.jup.ag/v6/swap', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            ...params,
-                            computeUnitPriceMicroLamports: 1000 // Priority fee
-                        })
-                    });
-                    const data = await response.json();
-                    return { data };
-                }
-            }
-        };
-    </script>
-    <script src="wallet.js"></script>
-    <script src="jupiter.js"></script>
-    <script src="birdeye.js"></script>
-    <script src="trading_bot.js"></script>
+    
+    <!-- Core dependencies -->
+    <script defer src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@solana/spl_token@0.3.11/lib/index.iife.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@project-serum/anchor@0.26.0/dist/browser/anchor.min.js"></script>
+    
+    <!-- Custom scripts -->
+    <script defer src="wallet.js"></script>
+    <script defer src="jupiter.js"></script>
+    <script defer src="birdeye.js"></script>
+    <script defer src="trading_bot.js"></script>
+    
     <style>
+        :root {
+            --primary-color: #2196F3;
+            --success-color: #4CAF50;
+            --error-color: #f44336;
+            --text-color: #333;
+            --background-color: #f5f5f5;
+            --card-background: white;
+            --border-radius: 8px;
+            --spacing: 20px;
+            --focus-outline: 3px solid #2196F3;
+        }
+
+        /* Reset and base styles */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #f5f5f5;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.5;
+            color: var(--text-color);
+            background-color: var(--background-color);
+            padding: var(--spacing);
+            min-height: 100vh;
         }
+
+        /* Accessibility improvements */
+        :focus {
+            outline: var(--focus-outline);
+            outline-offset: 2px;
+        }
+
+        :focus:not(:focus-visible) {
+            outline: none;
+        }
+
+        /* Skip to main content link */
+        .skip-link {
+            position: absolute;
+            top: -40px;
+            left: 0;
+            background: var(--primary-color);
+            color: white;
+            padding: 8px;
+            z-index: 100;
+        }
+
+        .skip-link:focus {
+            top: 0;
+        }
+
+        /* Container */
         .container {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: var(--card-background);
+            padding: var(--spacing);
+            border-radius: var(--border-radius);
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        button {
-            background: #512da8;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            margin: 5px;
+
+        /* Typography */
+        h1, h2 {
+            color: var(--text-color);
+            margin-bottom: var(--spacing);
         }
-        button:hover {
-            background: #311b92;
-        }
-        button:disabled {
-            background: #9e9e9e;
-            cursor: not-allowed;
-        }
+
+        /* Status indicators */
         .status {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 5px;
-        }
-        .success {
-            background: #e8f5e9;
-            color: #2e7d32;
-        }
-        .error {
-            background: #ffebee;
-            color: #c62828;
-        }
-        .warning {
-            background: #fff3e0;
-            color: #ef6c00;
-        }
-        .details {
-            margin-top: 10px;
-            font-size: 14px;
-        }
-        .wallet-info {
-            background: #f3e5f5;
-            padding: 15px;
-            border-radius: 5px;
-            margin-top: 20px;
-        }
-        .wallet-info h3 {
-            margin-top: 0;
-            color: #4a148c;
-        }
-        .address {
-            font-family: monospace;
-            word-break: break-all;
-            background: #fff;
-            padding: 10px;
-            border-radius: 3px;
-            margin: 5px 0;
-        }
-        .username {
-            font-weight: bold;
-            color: #4a148c;
-        }
-        .trading-panel {
-            margin-top: 20px;
-            padding: 20px;
-            background: #e8eaf6;
-            border-radius: 5px;
-        }
-        .market-overview {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-        .market-card {
-            background: white;
-            padding: 15px;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .active-positions {
-            margin-top: 20px;
-        }
-        .positions-table {
-            margin-top: 10px;
-        }
-        .table-header {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
-            padding: 10px;
-            background: #f5f5f5;
-            border-bottom: 1px solid #ddd;
-        }
-        .position-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
-            padding: 10px;
-            border-bottom: 1px solid #ddd;
-        }
-        .no-positions {
-            padding: 10px;
-            text-align: center;
-        }
-        .profit {
-            color: #4caf50;
-        }
-        .loss {
-            color: #f44336;
-        }
-        .close-position {
-            background: #f44336;
-            color: white;
-            border: none;
+            display: inline-block;
             padding: 5px 10px;
-            border-radius: 5px;
+            border-radius: 4px;
+            background-color: #f0f0f0;
+            margin: 10px 0;
+        }
+
+        .status.success {
+            background-color: var(--success-color);
+            color: white;
+        }
+
+        /* Buttons */
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background-color: var(--primary-color);
+            color: white;
             cursor: pointer;
-            font-size: 14px;
+            margin: 5px;
+            font-size: 1rem;
+            transition: background-color 0.2s, transform 0.1s;
         }
-        .close-position:hover {
-            background: #c62828;
+
+        button:hover {
+            background-color: #1976D2;
         }
-        .trading-settings {
-            margin-top: 20px;
+
+        button:active {
+            transform: scale(0.98);
         }
-        .setting-group {
-            margin-bottom: 15px;
+
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            transform: none;
         }
+
+        /* Form elements */
+        .settings-group {
+            margin: var(--spacing) 0;
+        }
+
         label {
             display: block;
             margin-bottom: 5px;
-            color: #4a148c;
+            color: #666;
+            font-weight: 500;
         }
+
         input[type="number"] {
-            width: 100%;
             padding: 8px;
             border: 1px solid #ddd;
             border-radius: 4px;
+            width: 120px;
+            font-size: 1rem;
         }
-        .token-grid {
+
+        input[type="number"]:focus {
+            border-color: var(--primary-color);
+        }
+
+        /* Trading panel */
+        .trading-panel {
+            margin-top: var(--spacing);
+            display: none;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        /* Positions */
+        .positions {
+            margin-top: var(--spacing);
+        }
+
+        .position-row {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 10px;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            align-items: center;
         }
-        .token-item {
-            background: white;
-            padding: 15px;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+
+        .position-row:hover {
+            background-color: #f9f9f9;
         }
-        .token-name {
-            font-weight: bold;
-            color: #4a148c;
-        }
-        .token-price {
-            font-family: monospace;
-            font-size: 14px;
-            margin: 5px 0;
-        }
-        .token-change {
-            font-size: 12px;
-            padding: 2px 6px;
-            border-radius: 3px;
-        }
+
+        /* Status colors */
         .profit {
-            background: #e8f5e9;
-            color: #2e7d32;
+            color: var(--success-color);
+            font-weight: 500;
         }
+
         .loss {
-            background: #ffebee;
-            color: #c62828;
+            color: var(--error-color);
+            font-weight: 500;
+        }
+
+        .close-position {
+            background-color: var(--error-color);
+        }
+
+        .no-positions {
+            color: #666;
+            font-style: italic;
+            padding: 10px;
+        }
+
+        /* Error messages */
+        .error-message {
+            color: var(--error-color);
+            background-color: #ffebee;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            display: none;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .position-row {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 5px;
+            }
+
+            .container {
+                padding: 10px;
+            }
+
+            input[type="number"] {
+                width: 100%;
+            }
+        }
+
+        /* High contrast mode support */
+        @media (forced-colors: active) {
+            button {
+                border: 2px solid ButtonText;
+            }
+
+            .status.success {
+                border: 2px solid ButtonText;
+            }
+
+            .position-row {
+                border: 1px solid ButtonText;
+            }
         }
     </style>
 </head>
 <body>
+    <a href="#main" class="skip-link">Skip to main content</a>
+    
     <div class="container">
-        <h1>Solana Trading Bot - Memecoin Trading</h1>
-        <p>Trade memecoins safely using Jupiter DEX aggregator.</p>
-        
-        <div class="wallet-info">
-            <h3>Wallet Status</h3>
-            <div id="walletStatus">Not connected</div>
-            <button id="connectWallet">Connect Wallet</button>
-        </div>
-
-        <div id="tradingPanel" class="trading-panel" style="display: none;">
-            <div class="market-overview">
-                <div class="market-card">
-                    <h3>Trending Tokens</h3>
-                    <div id="trendingTokens" class="token-grid">
-                        <!-- Trending tokens will be populated here -->
+        <main id="main">
+            <h1>Solana Trading Bot - Memecoin Trading</h1>
+            <p>Trade memecoins safely using Jupiter DEX aggregator.</p>
+            
+            <!-- Wallet section -->
+            <section aria-labelledby="wallet-section">
+                <h2 id="wallet-section" class="visually-hidden">Wallet Connection</h2>
+                <button id="connectWallet" onclick="connectWallet()" aria-label="Connect wallet">
+                    Connect Wallet
+                </button>
+                <div id="walletStatus" class="status" role="status" aria-live="polite">
+                    Not connected
+                </div>
+            </section>
+            
+            <!-- Trading panel -->
+            <section id="tradingPanel" class="trading-panel" aria-labelledby="trading-section">
+                <h2 id="trading-section">Trading Settings</h2>
+                
+                <!-- Trading settings -->
+                <form id="tradingSettings" class="settings-group">
+                    <div class="form-group">
+                        <label for="tradeSize">Trade Size (SOL):</label>
+                        <input type="number" 
+                               id="tradeSize" 
+                               min="0.1" 
+                               step="0.1" 
+                               value="0.1"
+                               aria-describedby="tradeSizeHelp">
+                        <small id="tradeSizeHelp">Minimum trade size is 0.1 SOL</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="maxSlippage">Max Slippage (%):</label>
+                        <input type="number" 
+                               id="maxSlippage" 
+                               min="0.1" 
+                               step="0.1" 
+                               value="1"
+                               aria-describedby="slippageHelp">
+                        <small id="slippageHelp">Maximum allowed price slippage</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="profitTarget">Profit Target (%):</label>
+                        <input type="number" 
+                               id="profitTarget" 
+                               min="1" 
+                               step="1" 
+                               value="10"
+                               aria-describedby="profitHelp">
+                        <small id="profitHelp">Target profit percentage for auto-sell</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="stopLoss">Stop Loss (%):</label>
+                        <input type="number" 
+                               id="stopLoss" 
+                               min="1" 
+                               step="1" 
+                               value="5"
+                               aria-describedby="stopLossHelp">
+                        <small id="stopLossHelp">Maximum allowed loss percentage</small>
+                    </div>
+                </form>
+                
+                <!-- Bot controls -->
+                <div class="bot-controls" role="group" aria-labelledby="bot-controls">
+                    <h3 id="bot-controls" class="visually-hidden">Bot Controls</h3>
+                    <button id="startBot" 
+                            onclick="tradingBot.start()" 
+                            aria-label="Start trading bot">
+                        Start Bot
+                    </button>
+                    <button id="stopBot" 
+                            onclick="tradingBot.stop()" 
+                            disabled 
+                            aria-label="Stop trading bot">
+                        Stop Bot
+                    </button>
+                    <div class="bot-status" role="status" aria-live="polite">
+                        <span>Status: <span id="botStatus">Inactive</span></span>
+                        <span>Active Trades: <span id="activeTrades">0</span></span>
                     </div>
                 </div>
-                <div class="market-card">
-                    <h3>New Launches</h3>
-                    <div id="newLaunches" class="token-grid">
-                        <!-- New launches will be populated here -->
+                
+                <!-- Positions -->
+                <section class="positions" aria-labelledby="positions-section">
+                    <h2 id="positions-section">Active Positions</h2>
+                    <div id="positionsList" 
+                         role="table" 
+                         aria-label="Active trading positions">
+                        <div class="no-positions" role="row">No active positions</div>
                     </div>
-                </div>
-                <div class="market-card">
-                    <h3>Trading Settings</h3>
-                    <div class="trading-settings">
-                        <div class="setting-group">
-                            <label>Trade Size:</label>
-                            <input type="number" id="tradeSize" value="0.1" min="0.1" step="0.1" max="10">
-                            <span>SOL</span>
-                        </div>
-                        <div class="setting-group">
-                            <label>Max Slippage:</label>
-                            <input type="number" id="maxSlippage" value="1.0" min="0.1" step="0.1" max="5">
-                            <span>%</span>
-                        </div>
-                        <div class="setting-group">
-                            <label>Profit Target:</label>
-                            <input type="number" id="profitTarget" value="5.0" min="1" step="0.5" max="100">
-                            <span>%</span>
-                        </div>
-                        <div class="setting-group">
-                            <label>Stop Loss:</label>
-                            <input type="number" id="stopLoss" value="2.0" min="0.5" step="0.5" max="10">
-                            <span>%</span>
-                        </div>
-                    </div>
-                </div>
+                </section>
+            </section>
+            
+            <!-- Status messages -->
+            <div id="status" 
+                 class="error-message" 
+                 role="alert" 
+                 aria-live="assertive" 
+                 style="display: none;">
             </div>
-
-            <div class="active-positions">
-                <h3>Active Positions</h3>
-                <div id="positionsTable" class="positions-table">
-                    <div class="table-header">
-                        <div>Token</div>
-                        <div>Entry Price</div>
-                        <div>Current Price</div>
-                        <div>P/L</div>
-                        <div>Actions</div>
-                    </div>
-                    <div id="positionsList">
-                        <!-- Positions will be added here dynamically -->
-                    </div>
-                </div>
-            </div>
-        </div>
+        </main>
     </div>
-
-    <script>
-        // Initialize global variables
-        let walletConnected = false;
-        let jupiter = null;
-        let tradingBot = {
-            active: false,
-            positions: new Map(),
-            onStatusUpdate: null
-        };
-
-        // Initialize status update handler
-        function updateWalletStatus(status) {
-            walletConnected = status === 'connected';
-            const connectButton = document.getElementById('connectWallet');
-            const walletStatus = document.getElementById('walletStatus');
-            const tradingPanel = document.getElementById('tradingPanel');
-            
-            if (walletConnected) {
-                connectButton.textContent = 'Connected';
-                connectButton.disabled = true;
-                walletStatus.textContent = 'Connected';
-                walletStatus.className = 'status success';
-                tradingPanel.style.display = 'block';
-            } else {
-                connectButton.textContent = 'Connect Wallet';
-                connectButton.disabled = false;
-                walletStatus.textContent = 'Not connected';
-                walletStatus.className = 'status';
-                tradingPanel.style.display = 'none';
-            }
-        }
-        
-        // Initialize components after DOM loads
-        document.addEventListener('DOMContentLoaded', () => {
-            // Wait for wallet manager to be available
-            const checkWalletManager = setInterval(() => {
-                if (window.walletManager) {
-                    clearInterval(checkWalletManager);
-                    window.walletManager.onStatusUpdate = updateWalletStatus;
-                    updateWalletStatus(window.walletManager.isConnected() ? 'connected' : 'disconnected');
-                }
-            }, 100);
-        });
-
-        // Wallet connection handler
-        async function connectWallet() {
-            try {
-                const connectButton = document.getElementById('connectWallet');
-                connectButton.disabled = true;
-                connectButton.textContent = 'Connecting...';
-                
-                // Connect wallet
-                await window.walletManager.connect();
-                
-                // Initialize Jupiter if not already initialized
-                if (!jupiter) {
-                    jupiter = new JupiterDEX();
-                    await jupiter.initialize();
-                }
-                
-            } catch (error) {
-                console.error('Failed to connect wallet:', error);
-                const connectButton = document.getElementById('connectWallet');
-                connectButton.disabled = false;
-                connectButton.textContent = 'Connect Wallet';
-            }
-        }
-
-        function setupTradingSettings() {
-            // Update trading bot settings when inputs change
-            document.getElementById('tradeSize').addEventListener('change', (e) => {
-                tradingBot.tradeSize = parseFloat(e.target.value);
-            });
-            
-            document.getElementById('maxSlippage').addEventListener('change', (e) => {
-                tradingBot.maxSlippage = parseFloat(e.target.value);
-            });
-            
-            document.getElementById('profitTarget').addEventListener('change', (e) => {
-                tradingBot.profitTarget = parseFloat(e.target.value);
-            });
-            
-            document.getElementById('stopLoss').addEventListener('change', (e) => {
-                tradingBot.stopLoss = parseFloat(e.target.value);
-            });
-        }
-
-        async function updateTokenPrices() {
-            if (!jupiter || !jupiter.initialized) return;
-            
-            const tokens = ['BONK', 'WIF', 'MYRO', 'POPCAT'];
-            const lastPrices = new Map();
-            
-            for (const token of tokens) {
-                try {
-                    const tokenCard = document.getElementById(`${token.toLowerCase()}Card`);
-                    const metricsDiv = tokenCard.querySelector('.token-metrics');
-                    
-                    // Get current price
-                    const price = await jupiter.getTokenPrice(jupiter.TOKENS[token]);
-                    const priceInUSD = price / 1e9; // Convert from lamports
-                    
-                    // Get previous price if available
-                    const lastPrice = lastPrices.get(token);
-                    const priceChange = lastPrice ? ((priceInUSD - lastPrice) / lastPrice) * 100 : 0;
-                    
-                    // Store current price for next update
-                    lastPrices.set(token, priceInUSD);
-                    
-                    // Update UI
-                    metricsDiv.innerHTML = `
-                        <div class="token-price">$${priceInUSD.toFixed(8)}</div>
-                        <div class="token-change ${priceChange >= 0 ? 'positive' : 'negative'}">
-                            ${priceChange >= 0 ? '↑' : '↓'} ${Math.abs(priceChange).toFixed(2)}%
-                        </div>
-                        <div class="token-volume">
-                            <a href="https://solscan.io/token/${jupiter.TOKENS[token]}" target="_blank">
-                                View on Solscan
-                            </a>
-                        </div>
-                    `;
-                    
-                } catch (error) {
-                    console.error(`Error updating ${token} price:`, error);
-                    const tokenCard = document.getElementById(`${token.toLowerCase()}Card`);
-                    const metricsDiv = tokenCard.querySelector('.token-metrics');
-                    metricsDiv.innerHTML = 'Error loading price data';
-                }
-            }
-        }
-
-        // Update positions display
-        function updatePositionsDisplay() {
-            const positionsList = document.getElementById('positionsList');
-            const positions = Array.from(tradingBot.positions.entries());
-            
-            if (positions.length === 0) {
-                positionsList.innerHTML = '<div class="no-positions">No active positions</div>';
-                return;
-            }
-            
-            positionsList.innerHTML = positions.map(([address, position]) => `
-                <div class="position-row">
-                    <div>${position.symbol}</div>
-                    <div>$${position.entryPrice.toFixed(6)}</div>
-                    <div>$${position.currentPrice ? position.currentPrice.toFixed(6) : '...'}</div>
-                    <div class="${position.profitLoss >= 0 ? 'profit' : 'loss'}">
-                        ${position.profitLoss ? position.profitLoss.toFixed(2) : '0.00'}%
-                    </div>
-                    <div>
-                        <button onclick="tradingBot.closePosition('${address}')" class="close-position">Close</button>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        // Listen for trading bot status updates
-        tradingBot.onStatusUpdate = () => {
-            const botStatusSpan = document.getElementById('botStatus');
-            const startButton = document.getElementById('startBot');
-            const stopButton = document.getElementById('stopBot');
-            
-            botStatusSpan.textContent = tradingBot.active ? 'Active' : 'Inactive';
-            startButton.disabled = tradingBot.active;
-            stopButton.disabled = !tradingBot.active;
-            
-            document.getElementById('activeTrades').textContent = tradingBot.positions.size;
-            updatePositionsDisplay();
-        };
-
-        // Initialize everything when page loads
-        document.addEventListener('DOMContentLoaded', () => {
-            // Initial positions update
-            updatePositionsDisplay();
-        });
-    </script>
 </body>
 </html>
