@@ -3,7 +3,6 @@ class JupiterDEX {
     constructor() {
         this.jupiter = null;
         this.initialized = false;
-        this.connection = new solanaWeb3.Connection('https://staked.helius-rpc.com?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c');
         this.TOKENS = {
             SOL: 'So11111111111111111111111111111111111111112',  // Wrapped SOL
             BONK: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',  // BONK
@@ -19,9 +18,9 @@ class JupiterDEX {
         try {
             console.log('Initializing Jupiter DEX...');
             
-            // Load Jupiter API
-            this.jupiter = new Jupiter.Load({
-                connection: this.connection,
+            // Initialize Jupiter SDK
+            this.jupiter = await JupiterApi.load({
+                connection: walletManager.connection,
                 cluster: 'mainnet-beta',
                 user: walletManager.provider,
                 platformFeeAndAccounts: {
@@ -33,7 +32,6 @@ class JupiterDEX {
                 }
             });
 
-            await this.jupiter.init();
             this.initialized = true;
             console.log('Jupiter DEX initialized successfully');
             
@@ -49,20 +47,25 @@ class JupiterDEX {
                 await this.initialize();
             }
 
-            const quote = await this.jupiter.quoteSwap({
-                inputMint,
-                outputMint,
-                amount,
+            const quote = await this.jupiter.computeRoutes({
+                inputMint: new solanaWeb3.PublicKey(inputMint),
+                outputMint: new solanaWeb3.PublicKey(outputMint),
+                amount: amount.toString(),
                 slippageBps,
-                onlyDirectRoutes: false
+                forceDirectRoute: false
             });
 
+            if (!quote.routesInfos || quote.routesInfos.length === 0) {
+                throw new Error('No routes found');
+            }
+
+            const bestRoute = quote.routesInfos[0];
             return {
                 inputAmount: amount,
-                outputAmount: quote.outAmount,
-                priceImpactPct: quote.priceImpactPct,
-                routeInfo: quote.routeInfo,
-                fees: quote.fees
+                outputAmount: bestRoute.outAmount,
+                priceImpactPct: bestRoute.priceImpactPct,
+                routeInfo: bestRoute,
+                fees: bestRoute.fees
             };
 
         } catch (error) {
@@ -77,12 +80,15 @@ class JupiterDEX {
                 await this.initialize();
             }
 
-            const result = await this.jupiter.exchange({
+            const { transactions } = await this.jupiter.exchange({
                 routeInfo: quote.routeInfo
             });
 
-            // Wait for transaction confirmation
-            const confirmation = await this.connection.confirmTransaction(result.txid);
+            // Execute the transaction
+            const { signature } = await transactions.execute();
+            
+            // Wait for confirmation
+            const confirmation = await walletManager.connection.confirmTransaction(signature);
             
             if (confirmation.value.err) {
                 throw new Error('Transaction failed to confirm');
@@ -90,7 +96,7 @@ class JupiterDEX {
 
             return {
                 success: true,
-                txid: result.txid,
+                txid: signature,
                 inputAmount: quote.inputAmount,
                 outputAmount: quote.outputAmount,
                 priceImpact: quote.priceImpactPct
@@ -110,7 +116,7 @@ class JupiterDEX {
 
             const tokenAccount = await this.jupiter.getTokenAccountInfo(
                 walletManager.provider.publicKey,
-                tokenMint
+                new solanaWeb3.PublicKey(tokenMint)
             );
 
             return tokenAccount ? tokenAccount.balance : 0;
@@ -228,10 +234,10 @@ class JupiterDEX {
             
             // 4. Sign and execute
             const signedTx = await wallet.signTransaction(transaction);
-            const txid = await this.connection.sendRawTransaction(signedTx.serialize());
+            const txid = await walletManager.connection.sendRawTransaction(signedTx.serialize());
             
             // 5. Wait for confirmation
-            const confirmation = await this.connection.confirmTransaction(txid);
+            const confirmation = await walletManager.connection.confirmTransaction(txid);
             
             if (confirmation.value.err) {
                 throw new Error('Transaction failed: ' + JSON.stringify(confirmation.value.err));
@@ -252,13 +258,17 @@ class JupiterDEX {
     // Monitor token price changes
     async monitorPrice(tokenMint, callback, interval = 10000) {
         let lastPrice = await this.getTokenPrice(tokenMint);
-        callback(lastPrice.price, 0, lastPrice);
-
+        
         return setInterval(async () => {
             try {
                 const currentPrice = await this.getTokenPrice(tokenMint);
-                const priceChange = ((currentPrice.price - lastPrice.price) / lastPrice.price) * 100;
-                callback(currentPrice.price, priceChange, currentPrice);
+                const priceChange = ((currentPrice - lastPrice) / lastPrice) * 100;
+                
+                callback(currentPrice, priceChange, {
+                    lastPrice,
+                    timestamp: Date.now()
+                });
+                
                 lastPrice = currentPrice;
             } catch (error) {
                 console.error('Error monitoring price:', error);
