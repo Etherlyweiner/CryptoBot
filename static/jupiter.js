@@ -19,18 +19,18 @@ class JupiterDEX {
             console.log('Initializing Jupiter DEX...');
             
             // Initialize Jupiter SDK
-            this.jupiter = await JupiterApi.load({
-                connection: walletManager.connection,
-                cluster: 'mainnet-beta',
-                user: walletManager.provider,
-                platformFeeAndAccounts: {
-                    feeBps: 50,  // 0.5% fee
-                    feeAccounts: {
-                        // Your fee account for collecting trading fees
-                        [this.TOKENS.SOL]: 'etherlyweiner'
-                    }
-                }
+            const jupiterQuoteApi = new JupiterApi.QuoteApi({
+                cluster: 'mainnet-beta'
             });
+
+            const jupiterSwapApi = new JupiterApi.SwapApi({
+                cluster: 'mainnet-beta'
+            });
+
+            this.jupiter = {
+                quoteApi: jupiterQuoteApi,
+                swapApi: jupiterSwapApi
+            };
 
             this.initialized = true;
             console.log('Jupiter DEX initialized successfully');
@@ -47,19 +47,19 @@ class JupiterDEX {
                 await this.initialize();
             }
 
-            const quote = await this.jupiter.computeRoutes({
+            const quoteResponse = await this.jupiter.quoteApi.getQuote({
                 inputMint: new solanaWeb3.PublicKey(inputMint),
                 outputMint: new solanaWeb3.PublicKey(outputMint),
                 amount: amount.toString(),
-                slippageBps,
-                forceDirectRoute: false
+                slippageBps: slippageBps.toString(),
+                onlyDirectRoutes: false
             });
 
-            if (!quote.routesInfos || quote.routesInfos.length === 0) {
+            if (!quoteResponse.data) {
                 throw new Error('No routes found');
             }
 
-            const bestRoute = quote.routesInfos[0];
+            const bestRoute = quoteResponse.data;
             return {
                 inputAmount: amount,
                 outputAmount: bestRoute.outAmount,
@@ -80,12 +80,22 @@ class JupiterDEX {
                 await this.initialize();
             }
 
-            const { transactions } = await this.jupiter.exchange({
-                routeInfo: quote.routeInfo
+            const swapResponse = await this.jupiter.swapApi.postSwap({
+                route: quote.routeInfo,
+                userPublicKey: walletManager.provider.publicKey.toString(),
+                wrapUnwrapSOL: true
             });
 
-            // Execute the transaction
-            const { signature } = await transactions.execute();
+            if (!swapResponse.data) {
+                throw new Error('Failed to create swap transaction');
+            }
+
+            // Sign and send transaction
+            const transaction = solanaWeb3.Transaction.from(
+                Buffer.from(swapResponse.data.swapTransaction, 'base64')
+            );
+
+            const signature = await walletManager.provider.signAndSendTransaction(transaction);
             
             // Wait for confirmation
             const confirmation = await walletManager.connection.confirmTransaction(signature);
@@ -114,12 +124,16 @@ class JupiterDEX {
                 throw new Error('Wallet not connected');
             }
 
-            const tokenAccount = await this.jupiter.getTokenAccountInfo(
+            const tokenAccount = await walletManager.connection.getParsedTokenAccountsByOwner(
                 walletManager.provider.publicKey,
-                new solanaWeb3.PublicKey(tokenMint)
+                { mint: new solanaWeb3.PublicKey(tokenMint) }
             );
 
-            return tokenAccount ? tokenAccount.balance : 0;
+            if (tokenAccount.value.length === 0) {
+                return 0;
+            }
+
+            return tokenAccount.value[0].account.data.parsed.info.tokenAmount.uiAmount;
 
         } catch (error) {
             console.error('Failed to get token balance:', error);

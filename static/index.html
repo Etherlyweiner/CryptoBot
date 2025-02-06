@@ -7,6 +7,8 @@
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@solana/spl-token@0.3.11/lib/index.iife.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jup-ag/core@4.0.0-beta.18/dist/index.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@project-serum/anchor@0.26.0/dist/browser/anchor.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jup-ag/api@6.0.6/dist/index.umd.js"></script>
     <script src="wallet.js"></script>
     <script src="jupiter.js"></script>
     <script src="birdeye.js"></script>
@@ -352,6 +354,12 @@
         let walletConnected = false;
         let jupiter;
         let priceUpdateInterval;
+        let tradingBot;
+        
+        // Initialize components after DOM loads
+        document.addEventListener('DOMContentLoaded', () => {
+            tradingBot = new TradingBot();
+        });
         
         // Wallet connection handler
         async function connectWallet() {
