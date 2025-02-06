@@ -9,13 +9,15 @@ class WalletManager {
 
     async _init() {
         try {
-            // Initialize Solana connection with fallback RPC endpoints
+            // Initialize Solana connection with Helius RPC endpoints
             const rpcEndpoints = [
-                'https://solana-mainnet.rpc.extrnode.com',
-                'https://mainnet.helius-rpc.com/?api-key=1d22a422-51a8-4df6-8f80-c32c34827429',
-                'https://neat-hidden-sanctuary.solana-mainnet.discover.quiknode.pro/2af5315d336f9ae920028bbb6ba4a6e5dc652a03/',
-                'https://solana-mainnet.g.alchemy.com/v2/demo'
+                'https://staked.helius-rpc.com?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c',
+                'https://mainnet.helius-rpc.com/?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c',
+                'https://myrta-kxo6n1-fast-mainnet.helius-rpc.com',
+                'https://eclipse.helius-rpc.com/'
             ];
+
+            const wsEndpoint = 'wss://mainnet.helius-rpc.com/?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c';
 
             for (const endpoint of rpcEndpoints) {
                 try {
@@ -23,9 +25,9 @@ class WalletManager {
                         endpoint,
                         { 
                             commitment: 'confirmed',
+                            wsEndpoint: wsEndpoint,
                             confirmTransactionInitialTimeout: 60000,
-                            disableRetryOnRateLimit: false,
-                            fetch: window.fetch
+                            disableRetryOnRateLimit: false
                         }
                     );
                     
@@ -164,6 +166,56 @@ class WalletManager {
 
         } catch (error) {
             console.error('Failed to get wallet info:', error);
+            throw error;
+        }
+    }
+
+    // Enhanced transaction parsing using Helius API
+    async parseTransaction(signature) {
+        try {
+            const response = await fetch(
+                `https://api.helius.xyz/v0/transactions/?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ transactions: [signature] })
+                }
+            );
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            return data[0];
+        } catch (error) {
+            console.error('Failed to parse transaction:', error);
+            throw error;
+        }
+    }
+
+    // Get transaction history using Helius API
+    async getTransactionHistory(address, options = {}) {
+        try {
+            const url = new URL(
+                `https://api.helius.xyz/v0/addresses/${address}/transactions/`,
+            );
+            url.searchParams.append('api-key', '74d34f4f-e88d-4da1-8178-01ef5749372c');
+            
+            // Add optional parameters
+            if (options.until) url.searchParams.append('until', options.until);
+            if (options.before) url.searchParams.append('before', options.before);
+            if (options.limit) url.searchParams.append('limit', options.limit);
+            
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to get transaction history:', error);
             throw error;
         }
     }
