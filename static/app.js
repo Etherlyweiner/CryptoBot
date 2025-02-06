@@ -10,6 +10,7 @@ class TradingBot {
             stopLoss: 5.0
         };
         this.onStatusUpdate = null;
+        this.initialized = false;
     }
 
     start() {
@@ -33,6 +34,17 @@ class TradingBot {
             console.error('Error closing position:', error);
             showError('Failed to close position: ' + error.message);
         }
+    }
+
+    updateSetting(property, value) {
+        if (property in this.settings) {
+            const numValue = parseFloat(value);
+            if (!isNaN(numValue)) {
+                this.settings[property] = numValue;
+                return true;
+            }
+        }
+        return false;
     }
 }
 
@@ -58,6 +70,9 @@ function updateWalletStatus(status) {
             walletStatus.textContent = 'Connected';
             walletStatus.className = 'status success';
             tradingPanel.style.display = 'block';
+            
+            // Initialize trading settings after connection
+            setupTradingSettings();
             
             // Announce to screen readers
             const announcement = document.getElementById('trading-announcements');
@@ -106,81 +121,84 @@ function showError(message) {
     }
 }
 
-// Wallet connection handler
-async function connectWallet() {
-    const connectButton = document.getElementById('connect-wallet');
-    if (!connectButton) {
-        console.error('Connect wallet button not found');
-        return;
-    }
-
-    try {
-        connectButton.disabled = true;
-        connectButton.textContent = 'Connecting...';
-        
-        await window.walletManager.connect();
-        
-        if (!jupiter) {
-            jupiter = new JupiterDEX();
-            await jupiter.initialize();
-        }
-        
-    } catch (error) {
-        console.error('Failed to connect wallet:', error);
-        showError('Failed to connect wallet: ' + error.message);
-        if (connectButton) {
-            connectButton.disabled = false;
-            connectButton.textContent = 'Connect Wallet';
-        }
-    }
-}
-
 // Trading settings handler
 function setupTradingSettings() {
-    const updateSetting = (id, property) => {
-        const input = document.getElementById(id);
-        input.value = tradingBot.settings[property];
-        input.addEventListener('change', (e) => {
-            const value = parseFloat(e.target.value);
-            if (!isNaN(value)) {
-                tradingBot.settings[property] = value;
-            }
-        });
+    const settingsMap = {
+        'max-slippage': 'maxSlippage',
+        'trade-size': 'tradeSize',
+        'profit-target': 'profitTarget',
+        'stop-loss': 'stopLoss'
     };
-    
-    updateSetting('tradeSize', 'tradeSize');
-    updateSetting('maxSlippage', 'maxSlippage');
-    updateSetting('profitTarget', 'profitTarget');
-    updateSetting('stopLoss', 'stopLoss');
+
+    Object.entries(settingsMap).forEach(([elementId, settingKey]) => {
+        const input = document.getElementById(elementId);
+        if (input) {
+            // Set initial value
+            const currentValue = tradingBot.settings[settingKey];
+            if (typeof currentValue !== 'undefined') {
+                input.value = currentValue;
+            }
+
+            // Add change listener
+            input.addEventListener('change', (e) => {
+                const success = tradingBot.updateSetting(settingKey, e.target.value);
+                if (!success) {
+                    showError(`Invalid value for ${elementId.replace('-', ' ')}`);
+                    // Reset to last valid value
+                    e.target.value = tradingBot.settings[settingKey];
+                }
+            });
+        } else {
+            console.warn(`Setting input not found: ${elementId}`);
+        }
+    });
 }
 
 // Update positions display
 function updatePositionsDisplay() {
-    const positionsList = document.getElementById('positionsList');
-    const positions = Array.from(tradingBot.positions.entries());
-    
-    if (positions.length === 0) {
-        positionsList.innerHTML = '<div class="no-positions" role="row">No active positions</div>';
+    const positionsList = document.getElementById('positions-list');
+    if (!positionsList) {
+        console.warn('Positions list element not found');
         return;
     }
+
+    const positions = Array.from(tradingBot.positions.entries());
+    const template = document.getElementById('position-row-template');
     
-    positionsList.innerHTML = positions.map(([address, position]) => `
-        <div class="position-row" role="row">
-            <div role="cell">${position.symbol}</div>
-            <div role="cell">$${position.entryPrice.toFixed(6)}</div>
-            <div role="cell">$${position.currentPrice ? position.currentPrice.toFixed(6) : '...'}</div>
-            <div role="cell" class="${position.profitLoss >= 0 ? 'profit' : 'loss'}">
-                ${position.profitLoss ? position.profitLoss.toFixed(2) : '0.00'}%
-            </div>
-            <div role="cell">
-                <button onclick="tradingBot.closePosition('${address}')" 
-                        class="close-position"
-                        aria-label="Close position for ${position.symbol}">
-                    Close
-                </button>
-            </div>
-        </div>
-    `).join('');
+    // Clear existing positions except the "no positions" message
+    const existingPositions = positionsList.querySelectorAll('.position-row');
+    existingPositions.forEach(row => row.remove());
+
+    if (positions.length === 0) {
+        const noPositionsRow = document.createElement('div');
+        noPositionsRow.role = 'row';
+        noPositionsRow.className = 'no-positions';
+        const cell = document.createElement('div');
+        cell.role = 'cell';
+        cell.textContent = 'No active positions';
+        noPositionsRow.appendChild(cell);
+        positionsList.appendChild(noPositionsRow);
+        return;
+    }
+
+    positions.forEach(([address, position]) => {
+        if (template) {
+            const clone = template.content.cloneNode(true);
+            // Fill in position data
+            clone.querySelector('.token-name').textContent = position.symbol || address;
+            clone.querySelector('.token-amount').textContent = position.amount;
+            clone.querySelector('.entry-price').textContent = position.entryPrice;
+            clone.querySelector('.current-price').textContent = position.currentPrice;
+            clone.querySelector('.pnl').textContent = position.pnl;
+            
+            const closeButton = clone.querySelector('.close-position');
+            if (closeButton) {
+                closeButton.addEventListener('click', () => tradingBot.closePosition(address));
+            }
+            
+            positionsList.appendChild(clone);
+        }
+    });
 }
 
 // Trading bot status updates
@@ -215,9 +233,6 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Check initial connection status
             updateWalletStatus(window.walletManager.isConnected() ? 'connected' : 'disconnected');
-            
-            setupTradingSettings();
-            updatePositionsDisplay();
         }
     }, 100);
     
@@ -232,3 +247,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+// Wallet connection handler
+async function connectWallet() {
+    const connectButton = document.getElementById('connect-wallet');
+    if (!connectButton) {
+        console.error('Connect wallet button not found');
+        return;
+    }
+
+    try {
+        connectButton.disabled = true;
+        connectButton.textContent = 'Connecting...';
+        
+        await window.walletManager.connect();
+        
+        if (!jupiter) {
+            jupiter = new JupiterDEX();
+            await jupiter.initialize();
+        }
+        
+    } catch (error) {
+        console.error('Failed to connect wallet:', error);
+        showError('Failed to connect wallet: ' + error.message);
+        if (connectButton) {
+            connectButton.disabled = false;
+            connectButton.textContent = 'Connect Wallet';
+        }
+    }
+}
