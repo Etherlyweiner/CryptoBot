@@ -3,187 +3,72 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Solana Trading Bot for automated memecoin trading using Jupiter DEX">
-    <title>Solana Trading Bot - Memecoin Trading</title>
-    
-    <!-- Core dependencies -->
-    <script defer src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/@solana/spl_token@0.3.11/lib/index.iife.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/@project-serum/anchor@0.26.0/dist/browser/anchor.min.js"></script>
-    <script defer src="jupiter-api.js"></script>
-    <!-- Custom scripts -->
-    <script defer src="wallet.js"></script>
-    <script defer src="jupiter.js"></script>
-    <script defer src="birdeye.js"></script>
-    <script defer src="app.js"></script>
+    <title>Solana Trading Bot</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <a href="#main" class="skip-link">Skip to main content</a>
-    
-    <div class="container" role="application">
-        <main id="main">
-            <h1>Solana Trading Bot - Memecoin Trading</h1>
-            <p>Trade memecoins safely using Jupiter DEX aggregator.</p>
-            
-            <!-- Wallet section -->
-            <section aria-labelledby="wallet-heading">
-                <h2 id="wallet-heading">Wallet Connection</h2>
-                <button id="connect-wallet" aria-label="Connect wallet">Connect Wallet</button>
-                <div id="wallet-status" role="status" aria-live="polite"></div>
-            </section>
+    <div class="container">
+        <header>
+            <h1>Solana Trading Bot</h1>
+            <div class="wallet-section">
+                <button id="connect-wallet" class="btn">Connect Wallet</button>
+                <div id="wallet-status" class="status">Not Connected</div>
+            </div>
+        </header>
 
-            <!-- Trading settings -->
-            <section aria-labelledby="settings-heading">
-                <h2 id="settings-heading">Trading Settings</h2>
+        <div id="trading-panel" class="panel" style="display: none;">
+            <div class="settings-section">
+                <h2>Trading Settings</h2>
                 <div class="settings-group">
-                    <label for="trade-size">Trade Size (SOL)</label>
-                    <input type="number" id="trade-size" min="0.1" max="100" step="0.1" value="0.1" 
-                           aria-describedby="trade-size-description">
-                    <div id="trade-size-description" class="sr-only">Enter trade size in SOL between 0.1 and 100</div>
-
-                    <label for="max-slippage">Maximum Slippage (%)</label>
-                    <input type="number" id="max-slippage" min="0" max="100" step="0.1" value="1.0" 
-                           aria-describedby="slippage-description">
-                    <div id="slippage-description" class="sr-only">Enter maximum allowed slippage percentage between 0 and 100</div>
-
-                    <label for="profit-target">Profit Target (%)</label>
-                    <input type="number" id="profit-target" min="0" max="1000" step="0.1" value="10.0" 
-                           aria-describedby="profit-target-description">
-                    <div id="profit-target-description" class="sr-only">Enter profit target percentage between 0 and 1000</div>
-
-                    <label for="stop-loss">Stop Loss (%)</label>
-                    <input type="number" id="stop-loss" min="0" max="100" step="0.1" value="5.0" 
-                           aria-describedby="stop-loss-description">
-                    <div id="stop-loss-description" class="sr-only">Enter stop loss percentage between 0 and 100</div>
+                    <label>
+                        <input type="checkbox" id="auto-trading">
+                        Enable Auto Trading
+                    </label>
                 </div>
-
-                <div class="auto-trading">
-                    <h3>Autonomous Trading</h3>
-                    <div class="settings-group">
-                        <label for="auto-trading-enabled">Enable Auto Trading</label>
-                        <input type="checkbox" id="auto-trading-enabled" 
-                               aria-describedby="auto-trading-description">
-                        <div id="auto-trading-description" class="sr-only">Enable or disable autonomous trading</div>
-
-                        <label for="trading-interval">Trading Interval (minutes)</label>
-                        <input type="number" id="trading-interval" min="1" max="1440" step="1" value="5" 
-                               aria-describedby="interval-description">
-                        <div id="interval-description" class="sr-only">Enter trading interval in minutes between 1 and 1440</div>
-
-                        <label for="max-positions">Maximum Positions</label>
-                        <input type="number" id="max-positions" min="1" max="10" step="1" value="3" 
-                               aria-describedby="max-positions-description">
-                        <div id="max-positions-description" class="sr-only">Enter maximum number of concurrent positions between 1 and 10</div>
-
-                        <div class="trading-controls">
-                            <button id="start-trading" class="primary-button" aria-label="Start autonomous trading">
-                                Start Trading
-                            </button>
-                            <button id="stop-trading" class="danger-button" aria-label="Stop autonomous trading" disabled>
-                                Stop Trading
-                            </button>
-                            <div id="trading-status" class="status-indicator" role="status" aria-live="polite">
-                                Trading Status: Stopped
-                            </div>
-                        </div>
-                    </div>
+                <div class="settings-group">
+                    <label>Trading Pair:</label>
+                    <select id="trading-pair">
+                        <option value="">Select Pair</option>
+                        <option value="SOL/USDC">SOL/USDC</option>
+                        <option value="SOL/USDT">SOL/USDT</option>
+                        <option value="BONK/SOL">BONK/SOL</option>
+                        <option value="JUP/SOL">JUP/SOL</option>
+                    </select>
                 </div>
-
-                <div class="risk-management">
-                    <h3>Risk Management</h3>
-                    <div class="settings-group">
-                        <label for="max-daily-loss">Maximum Daily Loss (%)</label>
-                        <input type="number" id="max-daily-loss" min="0.1" max="100" step="0.1" value="5.0" 
-                               aria-describedby="max-daily-loss-description">
-                        <div id="max-daily-loss-description" class="sr-only">Maximum allowed daily loss percentage</div>
-
-                        <label for="max-position-size">Maximum Position Size (SOL)</label>
-                        <input type="number" id="max-position-size" min="0.1" max="10" step="0.1" value="1.0" 
-                               aria-describedby="max-position-size-description">
-                        <div id="max-position-size-description" class="sr-only">Maximum size for any single position in SOL</div>
-
-                        <label for="min-liquidity">Minimum Liquidity (SOL)</label>
-                        <input type="number" id="min-liquidity" min="100" max="10000" step="100" value="1000" 
-                               aria-describedby="min-liquidity-description">
-                        <div id="min-liquidity-description" class="sr-only">Minimum required liquidity in SOL for trading a token</div>
-
-                        <label for="min-volume">Minimum 24h Volume (SOL)</label>
-                        <input type="number" id="min-volume" min="10" max="10000" step="10" value="100" 
-                               aria-describedby="min-volume-description">
-                        <div id="min-volume-description" class="sr-only">Minimum required 24-hour trading volume in SOL</div>
-
-                        <label for="max-slippage-impact">Maximum Price Impact (%)</label>
-                        <input type="number" id="max-slippage-impact" min="0.1" max="10" step="0.1" value="2.0" 
-                               aria-describedby="max-slippage-impact-description">
-                        <div id="max-slippage-impact-description" class="sr-only">Maximum allowed price impact percentage for trades</div>
-
-                        <label for="cooldown-period">Cooldown Period (seconds)</label>
-                        <input type="number" id="cooldown-period" min="0" max="3600" step="60" value="300" 
-                               aria-describedby="cooldown-period-description">
-                        <div id="cooldown-period-description" class="sr-only">Waiting period after a loss before trading again</div>
-                    </div>
+                <div class="settings-group">
+                    <label>Amount (SOL):</label>
+                    <input type="number" id="trading-amount" min="0.1" step="0.1" value="0.1">
                 </div>
-            </section>
-
-            <!-- Trading panel -->
-            <section aria-labelledby="trading-heading" class="trading-panel">
-                <h2 id="trading-heading">Trading Panel</h2>
-                <div class="error-message" role="alert" aria-live="assertive"></div>
-                
-                <div class="token-inputs">
-                    <div class="input-group">
-                        <label for="token-address">Token Address</label>
-                        <input type="text" id="token-address" 
-                               aria-describedby="token-address-description"
-                               placeholder="Enter Solana token address">
-                        <div id="token-address-description" class="sr-only">Enter the Solana token address you want to trade</div>
-                    </div>
+                <div class="settings-group">
+                    <label>Trading Interval (seconds):</label>
+                    <input type="number" id="trading-interval" min="10" step="1" value="60">
                 </div>
-
-                <div class="trading-actions">
-                    <button id="buy-token" aria-label="Buy token">Buy</button>
-                    <button id="sell-token" aria-label="Sell token">Sell</button>
+                <div class="settings-group">
+                    <button id="start-trading" class="btn btn-primary" disabled>Start Trading</button>
                 </div>
-            </section>
+            </div>
 
-            <!-- Positions table -->
-            <section aria-labelledby="positions-heading">
-                <h2 id="positions-heading">Active Positions</h2>
-                <div role="table" aria-label="Trading positions" class="positions">
-                    <div role="row" class="position-header">
-                        <div role="columnheader">Token</div>
-                        <div role="columnheader">Amount</div>
-                        <div role="columnheader">Entry Price</div>
-                        <div role="columnheader">Current Price</div>
-                        <div role="columnheader">P/L</div>
-                        <div role="columnheader">Actions</div>
-                    </div>
-                    <div id="positions-list">
-                        <div role="row" class="no-positions">
-                            <div role="cell">No active positions</div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-        </main>
-    </div>
+            <div class="status-section">
+                <h2>Trading Status</h2>
+                <div id="trading-status" class="status">Inactive</div>
+                <div id="error-message" class="error-message" style="display: none;"></div>
+                <div id="success-message" class="success-message" style="display: none;"></div>
+            </div>
 
-    <!-- Templates for dynamic content -->
-    <template id="position-row-template">
-        <div role="row" class="position-row">
-            <div role="cell" class="token-name"></div>
-            <div role="cell" class="token-amount"></div>
-            <div role="cell" class="entry-price"></div>
-            <div role="cell" class="current-price"></div>
-            <div role="cell" class="pnl"></div>
-            <div role="cell" class="actions">
-                <button class="close-position" aria-label="Close position">Close</button>
+            <div class="positions-section">
+                <h2>Open Positions</h2>
+                <div id="positions"></div>
             </div>
         </div>
-    </template>
+    </div>
 
-    <!-- Screen reader only announcements -->
-    <div aria-live="polite" class="sr-only" id="trading-announcements"></div>
+    <!-- Load dependencies -->
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jup-ag/core@latest"></script>
+    
+    <!-- Load application scripts -->
+    <script src="wallet.js"></script>
+    <script src="jupiter.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>

@@ -1,34 +1,36 @@
 // Jupiter DEX integration
 class JupiterDEX {
     constructor() {
+        console.log('Jupiter instance created');
         this.initialized = false;
         this.connection = null;
         this.jupiter = null;
     }
 
-    async initialize(connection) {
+    async initialize() {
         try {
             console.log('Initializing Jupiter DEX...');
-            this.connection = connection;
             
-            // Load Jupiter SDK
+            // Check if Jupiter SDK is loaded
             if (typeof Jupiter === 'undefined') {
                 throw new Error('Jupiter SDK not loaded');
             }
-            
+
+            // Initialize Jupiter connection
+            this.connection = new solanaWeb3.Connection(
+                'https://api.mainnet-beta.solana.com',
+                'confirmed'
+            );
+
             // Initialize Jupiter
             this.jupiter = await Jupiter.load({
                 connection: this.connection,
                 cluster: 'mainnet-beta',
-                platformFeeAndAccounts: {
-                    feeBps: 20,
-                    feeAccounts: {}
-                }
+                userPublicKey: window.walletManager?.publicKey,
             });
 
             this.initialized = true;
             console.log('Jupiter DEX initialized successfully');
-            return true;
         } catch (error) {
             console.error('Failed to initialize Jupiter:', error);
             throw error;
@@ -202,8 +204,49 @@ class JupiterDEX {
             throw error;
         }
     }
+
+    async getQuote(inputMint, outputMint, amount, slippage = 1) {
+        try {
+            if (!this.initialized) {
+                throw new Error('Jupiter not initialized');
+            }
+
+            const quote = await this.jupiter.computeRoutes({
+                inputMint,
+                outputMint,
+                amount,
+                slippageBps: slippage * 100,
+            });
+
+            return quote;
+        } catch (error) {
+            console.error('Failed to get quote:', error);
+            throw error;
+        }
+    }
+
+    async executeTrade(route) {
+        try {
+            if (!this.initialized) {
+                throw new Error('Jupiter not initialized');
+            }
+
+            const { transactions } = await this.jupiter.exchange({
+                routeInfo: route,
+            });
+
+            // Sign and send the transaction
+            const signature = await window.walletManager.sendTransaction(
+                transactions.transaction
+            );
+
+            return signature;
+        } catch (error) {
+            console.error('Failed to execute trade:', error);
+            throw error;
+        }
+    }
 }
 
 // Initialize and export Jupiter instance
 window.jupiter = new JupiterDEX();
-console.log('Jupiter instance created');
