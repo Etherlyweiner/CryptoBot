@@ -1,13 +1,15 @@
 // DexScreener Integration
 class DexScreener {
     constructor() {
-        this.API_BASE = 'https://api.dexscreener.com/latest';
+        this.baseUrl = 'https://api.dexscreener.com/latest';
+        this.trendingCache = new Map();
+        this.cacheTimeout = 60000; // 1 minute cache
     }
 
     // Get token information by contract address
     async getTokenInfo(address) {
         try {
-            const response = await fetch(`${this.API_BASE}/dex/tokens/${address}`);
+            const response = await fetch(`${this.baseUrl}/dex/tokens/${address}`);
             const data = await response.json();
             return data;
         } catch (error) {
@@ -19,7 +21,7 @@ class DexScreener {
     // Get pair information
     async getPairInfo(pairAddress) {
         try {
-            const response = await fetch(`${this.API_BASE}/dex/pairs/solana/${pairAddress}`);
+            const response = await fetch(`${this.baseUrl}/dex/pairs/solana/${pairAddress}`);
             const data = await response.json();
             return data;
         } catch (error) {
@@ -31,7 +33,7 @@ class DexScreener {
     // Search for tokens
     async searchTokens(query) {
         try {
-            const response = await fetch(`${this.API_BASE}/dex/search/?q=${query}`);
+            const response = await fetch(`${this.baseUrl}/dex/search/?q=${query}`);
             const data = await response.json();
             return data;
         } catch (error) {
@@ -43,11 +45,66 @@ class DexScreener {
     // Get trending tokens on Solana
     async getTrendingTokens() {
         try {
-            const response = await fetch(`${this.API_BASE}/dex/trending`);
+            const now = Date.now();
+            if (this.trendingCache.has('trending') && 
+                now - this.trendingCache.get('trending').timestamp < this.cacheTimeout) {
+                return this.trendingCache.get('trending').data;
+            }
+
+            const response = await fetch(`${this.baseUrl}/dex/tokens/SOL`);
+            if (!response.ok) throw new Error('Failed to fetch trending tokens');
+            
             const data = await response.json();
-            return data.pairs.filter(pair => pair.chainId === 'solana');
+            const tokens = data.pairs
+                .filter(pair => {
+                    const priceUsd = parseFloat(pair.priceUsd);
+                    const volume24h = parseFloat(pair.volume.h24);
+                    return priceUsd && volume24h > 10000; // Min $10k daily volume
+                })
+                .sort((a, b) => parseFloat(b.volume.h24) - parseFloat(a.volume.h24))
+                .slice(0, 10);
+
+            const trending = tokens.map(token => ({
+                symbol: token.baseToken.symbol,
+                name: token.baseToken.name,
+                address: token.baseToken.address,
+                price: parseFloat(token.priceUsd),
+                priceChange24h: parseFloat(token.priceChange.h24),
+                volume24h: parseFloat(token.volume.h24),
+                liquidity: parseFloat(token.liquidity.usd)
+            }));
+
+            this.trendingCache.set('trending', {
+                timestamp: now,
+                data: trending
+            });
+
+            return trending;
         } catch (error) {
             console.error('Error fetching trending tokens:', error);
+            throw error;
+        }
+    }
+
+    // Get token metrics
+    async getTokenMetrics(address) {
+        try {
+            const response = await fetch(`${this.baseUrl}/dex/tokens/${address}`);
+            if (!response.ok) throw new Error('Failed to fetch token metrics');
+            
+            const data = await response.json();
+            const pair = data.pairs[0];
+            
+            return {
+                price: parseFloat(pair.priceUsd),
+                priceChange24h: parseFloat(pair.priceChange.h24),
+                volume24h: parseFloat(pair.volume.h24),
+                liquidity: parseFloat(pair.liquidity.usd),
+                fdv: parseFloat(pair.fdv),
+                transactions24h: pair.txns.h24.total
+            };
+        } catch (error) {
+            console.error('Error fetching token metrics:', error);
             throw error;
         }
     }
@@ -74,35 +131,6 @@ class DexScreener {
         if (marketCap >= 1e6) return `$${(marketCap / 1e6).toFixed(2)}M`;
         if (marketCap >= 1e3) return `$${(marketCap / 1e3).toFixed(2)}K`;
         return `$${marketCap.toFixed(2)}`;
-    }
-
-    // Get token metrics
-    async getTokenMetrics(address) {
-        try {
-            const data = await this.getTokenInfo(address);
-            if (!data.pairs || data.pairs.length === 0) {
-                throw new Error('No trading pairs found for this token');
-            }
-
-            // Get the most liquid pair
-            const mainPair = data.pairs.reduce((prev, current) => {
-                return (prev.liquidity?.usd || 0) > (current.liquidity?.usd || 0) ? prev : current;
-            });
-
-            return {
-                price: mainPair.priceUsd,
-                priceChange24h: mainPair.priceChange.h24,
-                volume24h: mainPair.volume.h24,
-                liquidity: mainPair.liquidity.usd,
-                marketCap: mainPair.fdv,
-                pairAddress: mainPair.pairAddress,
-                dexId: mainPair.dexId,
-                url: `https://dexscreener.com/solana/${mainPair.pairAddress}`
-            };
-        } catch (error) {
-            console.error('Error getting token metrics:', error);
-            throw error;
-        }
     }
 
     // Monitor pair for price updates
@@ -145,3 +173,6 @@ class DexScreener {
         return setInterval(updatePrice, interval);
     }
 }
+
+// Initialize DexScreener
+const dexscreener = new DexScreener();

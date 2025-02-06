@@ -214,6 +214,12 @@
             border-radius: 5px;
             margin-bottom: 15px;
         }
+        .bot-controls {
+            margin-bottom: 10px;
+        }
+        .bot-status {
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -234,6 +240,18 @@
         
         <div id="tradingPanel" class="trading-panel">
             <div class="market-overview">
+                <div class="market-card">
+                    <h3>Trading Bot Status</h3>
+                    <div class="bot-controls">
+                        <button onclick="tradingBot.start()" id="startBot">Start Bot</button>
+                        <button onclick="tradingBot.stop()" id="stopBot" disabled>Stop Bot</button>
+                    </div>
+                    <div class="bot-status">
+                        <p>Status: <span id="botStatus">Inactive</span></p>
+                        <p>Active Trades: <span id="activeTrades">0</span></p>
+                        <p>Total Profit: <span id="totalProfit">0.00 SOL</span></p>
+                    </div>
+                </div>
                 <div class="market-card">
                     <h3>Market Overview</h3>
                     <div id="marketMetrics">Loading market data...</div>
@@ -298,6 +316,7 @@
     <script src="jupiter.js"></script>
     <script src="wallet.js"></script>
     <script src="dexscreener.js"></script>
+    <script src="trading_bot.js"></script>
     <script>
         let jupiter;
         let dexscreener;
@@ -611,6 +630,75 @@
                 swapButton.disabled = false;
             }
         }
+        
+        // Update UI elements
+        function updateBotStatus() {
+            const botStatusSpan = document.getElementById('botStatus');
+            const startButton = document.getElementById('startBot');
+            const stopButton = document.getElementById('stopBot');
+            
+            botStatusSpan.textContent = tradingBot.active ? 'Active' : 'Inactive';
+            startButton.disabled = tradingBot.active;
+            stopButton.disabled = !tradingBot.active;
+            
+            document.getElementById('activeTrades').textContent = tradingBot.positions.size;
+        }
+
+        // Update market metrics
+        async function updateMarketMetrics() {
+            try {
+                const trending = await dexscreener.getTrendingTokens();
+                const metricsDiv = document.getElementById('marketMetrics');
+                
+                const totalVolume = trending.reduce((sum, token) => sum + token.volume24h, 0);
+                const avgPriceChange = trending.reduce((sum, token) => sum + token.priceChange24h, 0) / trending.length;
+                
+                metricsDiv.innerHTML = `
+                    <p>24h Volume: $${totalVolume.toLocaleString()}</p>
+                    <p>Avg Price Change: ${avgPriceChange.toFixed(2)}%</p>
+                    <p>Active Tokens: ${trending.length}</p>
+                `;
+                
+                // Update trending tokens display
+                const trendingDiv = document.getElementById('trendingTokens');
+                trendingDiv.innerHTML = trending.map(token => `
+                    <div class="token-card">
+                        <h4>${token.symbol}</h4>
+                        <p>Price: $${token.price.toFixed(6)}</p>
+                        <p>24h Change: ${token.priceChange24h.toFixed(2)}%</p>
+                        <p>24h Volume: $${token.volume24h.toLocaleString()}</p>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Error updating market metrics:', error);
+            }
+        }
+
+        // Initialize everything
+        async function initialize() {
+            try {
+                await updateMarketMetrics();
+                setInterval(updateMarketMetrics, 30000); // Update every 30 seconds
+                
+                // Add wallet connection handler
+                walletManager.onConnect(() => {
+                    updateBotStatus();
+                    document.getElementById('startBot').disabled = false;
+                });
+                
+                walletManager.onDisconnect(() => {
+                    tradingBot.stop();
+                    updateBotStatus();
+                    document.getElementById('startBot').disabled = true;
+                });
+                
+            } catch (error) {
+                console.error('Initialization error:', error);
+            }
+        }
+
+        initialize();
     </script>
 </body>
 </html>
