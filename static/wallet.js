@@ -47,24 +47,34 @@ class WalletManager {
                 throw new Error('Failed to connect to any Solana RPC endpoint');
             }
 
-            // Wait for wallet to be available
+            // Check for any available wallet
             let attempts = 0;
-            while (!window.solana && attempts < 10) {
+            while (attempts < 10) {
                 attempts++;
-                console.log(`Checking for Phantom wallet (attempt ${attempts}/10)`);
+                if (window.phantom?.solana || window.solana || window.solflare) {
+                    break;
+                }
+                console.log(`Checking for wallet (attempt ${attempts}/10)`);
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
-            if (!window.solana) {
-                throw new Error('Phantom wallet not found after 10 attempts');
+            // Get the wallet provider
+            if (window.phantom?.solana) {
+                this.provider = window.phantom.solana;
+                console.log('Using Phantom wallet');
+            } else if (window.solana) {
+                this.provider = window.solana;
+                console.log('Using Solana wallet');
+            } else if (window.solflare) {
+                this.provider = window.solflare;
+                console.log('Using Solflare wallet');
+            } else {
+                throw new Error('No wallet found. Please install Phantom, Solflare, or another Solana wallet.');
             }
 
-            console.log('Wallet detected:', window.solana);
-            this.provider = window.solana;
-
             // Setup listeners
-            this.provider.on('connect', () => {
-                console.log('Wallet connected event');
+            this.provider.on('connect', (publicKey) => {
+                console.log('Wallet connected:', publicKey.toBase58());
                 this.connected = true;
                 if (this.onStatusUpdate) {
                     this.onStatusUpdate('connected');
@@ -76,6 +86,18 @@ class WalletManager {
                 this.connected = false;
                 if (this.onStatusUpdate) {
                     this.onStatusUpdate('disconnected');
+                }
+            });
+
+            this.provider.on('accountChanged', (publicKey) => {
+                if (publicKey) {
+                    console.log('Wallet account changed:', publicKey.toBase58());
+                } else {
+                    console.log('Wallet account changed: disconnected');
+                    this.connected = false;
+                    if (this.onStatusUpdate) {
+                        this.onStatusUpdate('disconnected');
+                    }
                 }
             });
 
@@ -96,26 +118,43 @@ class WalletManager {
                 await this._init();
             }
 
-            console.log('Requesting wallet connection...');
-            await this.provider.connect();
-            
-            console.log('Wallet connected successfully');
-            
-            // Get wallet info
-            return await this.getWalletInfo();
+            if (!this.provider) {
+                throw new Error('No wallet provider available');
+            }
 
+            // Try to reconnect if already connected
+            try {
+                const resp = await this.provider.connect();
+                console.log('Wallet connected:', resp.publicKey.toBase58());
+                this.connected = true;
+                return resp;
+            } catch (err) {
+                console.error('Connection error:', err);
+                // If connection fails, try to disconnect first
+                try {
+                    await this.provider.disconnect();
+                } catch (e) {
+                    console.warn('Disconnect error:', e);
+                }
+                // Then try to connect again
+                const resp = await this.provider.connect();
+                console.log('Wallet connected after retry:', resp.publicKey.toBase58());
+                this.connected = true;
+                return resp;
+            }
         } catch (error) {
             console.error('Failed to connect wallet:', error);
+            this.connected = false;
             throw error;
         }
     }
 
     async disconnect() {
         try {
-            if (this.provider) {
+            if (this.provider && this.connected) {
                 await this.provider.disconnect();
+                this.connected = false;
             }
-            this.connected = false;
         } catch (error) {
             console.error('Failed to disconnect wallet:', error);
             throw error;
@@ -123,101 +162,15 @@ class WalletManager {
     }
 
     isConnected() {
-        return this.connected && this.provider && this.provider.isConnected;
+        return this.connected;
     }
 
-    async getWalletInfo() {
-        try {
-            if (!this.isConnected()) {
-                throw new Error('Wallet not connected');
-            }
-
-            const publicKey = this.provider.publicKey.toString();
-            console.log('Getting wallet info for:', publicKey);
-
-            // Get SOL balance with retries
-            let balance = 0;
-            let retries = 3;
-            
-            while (retries > 0) {
-                try {
-                    balance = await this.connection.getBalance(
-                        new solanaWeb3.PublicKey(publicKey),
-                        'confirmed'
-                    );
-                    break;
-                } catch (error) {
-                    console.warn(`Failed to get balance, retries left: ${retries-1}`);
-                    retries--;
-                    if (retries === 0) throw error;
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
-            }
-            
-            const solBalance = balance / solanaWeb3.LAMPORTS_PER_SOL;
-
-            const info = {
-                publicKey,
-                balance: solBalance
-            };
-
-            console.log('Wallet info retrieved:', info);
-            return info;
-
-        } catch (error) {
-            console.error('Failed to get wallet info:', error);
-            throw error;
-        }
+    getProvider() {
+        return this.provider;
     }
 
-    // Enhanced transaction parsing using Helius API
-    async parseTransaction(signature) {
-        try {
-            const response = await fetch(
-                `https://api.helius.xyz/v0/transactions/?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ transactions: [signature] })
-                }
-            );
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            return data[0];
-        } catch (error) {
-            console.error('Failed to parse transaction:', error);
-            throw error;
-        }
-    }
-
-    // Get transaction history using Helius API
-    async getTransactionHistory(address, options = {}) {
-        try {
-            const url = new URL(
-                `https://api.helius.xyz/v0/addresses/${address}/transactions/`,
-            );
-            url.searchParams.append('api-key', '74d34f4f-e88d-4da1-8178-01ef5749372c');
-            
-            // Add optional parameters
-            if (options.until) url.searchParams.append('until', options.until);
-            if (options.before) url.searchParams.append('before', options.before);
-            if (options.limit) url.searchParams.append('limit', options.limit);
-            
-            const response = await fetch(url);
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            return await response.json();
-        } catch (error) {
-            console.error('Failed to get transaction history:', error);
-            throw error;
-        }
+    getConnection() {
+        return this.connection;
     }
 }
 
@@ -225,56 +178,41 @@ class WalletManager {
 window.walletManager = new WalletManager();
 
 // Check if wallet is ready for trading
-const checkTradingReadiness = async () => {
+async function checkTradingReadiness() {
     try {
-        const walletStatus = await window.walletManager.connect();
-        
-        if (!walletStatus) {
-            return {
-                ready: false,
-                message: 'Wallet not connected',
-                details: 'Please connect your wallet'
-            };
-        }
-        
-        // Check minimum balance (0.05 SOL for trading + fees)
-        const minBalance = 0.05;
-        if (walletStatus.balance < minBalance) {
-            return {
-                ready: false,
-                message: `Insufficient balance: ${walletStatus.balance.toFixed(4)} SOL`,
-                details: `Minimum required: ${minBalance} SOL (for trading + fees)`
-            };
+        // Check wallet connection
+        if (!window.walletManager.isConnected()) {
+            throw new Error('Wallet not connected');
         }
 
-        // Get token balances
-        const tokenBalances = {};
-        if (window.walletManager.jupiter && window.walletManager.jupiter.TOKENS) {  
-            for (const [symbol, mint] of Object.entries(window.walletManager.jupiter.TOKENS)) {
-                try {
-                    const balance = await window.walletManager.getTokenBalance(mint);
-                    if (balance > 0) {
-                        tokenBalances[symbol] = balance;
-                    }
-                } catch (error) {
-                    console.warn(`Failed to get ${symbol} balance:`, error);
-                }
-            }
+        // Check RPC connection
+        const connection = window.walletManager.getConnection();
+        if (!connection) {
+            throw new Error('No RPC connection');
         }
+
+        // Get wallet balance
+        const provider = window.walletManager.getProvider();
+        const publicKey = provider.publicKey;
+        const balance = await connection.getBalance(publicKey);
         
+        // Check minimum balance (0.1 SOL)
+        if (balance < 0.1 * 1e9) {
+            throw new Error('Insufficient balance (minimum 0.1 SOL required)');
+        }
+
+        // All checks passed
         return {
             ready: true,
-            message: 'Ready for trading',
-            balance: walletStatus.balance,
-            tokenBalances,
-            publicKey: walletStatus.publicKey,
-            username: 'etherlyweiner'
+            publicKey: publicKey.toBase58(),
+            balance: balance / 1e9
         };
+
     } catch (error) {
+        console.error('Trading readiness check failed:', error);
         return {
             ready: false,
-            message: 'Error checking wallet status',
-            details: error.message
+            error: error.message
         };
     }
-};
+}
