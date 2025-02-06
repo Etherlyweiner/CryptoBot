@@ -81,69 +81,10 @@
             color: #4a148c;
         }
         .trading-panel {
-            display: none;
             margin-top: 20px;
             padding: 20px;
             background: #e8eaf6;
             border-radius: 5px;
-        }
-        .token-list {
-            margin: 10px 0;
-            padding: 10px;
-            background: white;
-            border-radius: 5px;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-        .token-item {
-            display: flex;
-            align-items: center;
-            padding: 5px;
-            cursor: pointer;
-            border-bottom: 1px solid #eee;
-        }
-        .token-item:hover {
-            background: #f5f5f5;
-        }
-        .token-item img {
-            width: 24px;
-            height: 24px;
-            margin-right: 10px;
-        }
-        .price-chart {
-            width: 100%;
-            height: 300px;
-            margin-top: 20px;
-            background: white;
-            border-radius: 5px;
-            padding: 10px;
-        }
-        .trade-form {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-top: 20px;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            color: #4a148c;
-        }
-        input[type="number"] {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        .price-info {
-            grid-column: 1 / -1;
-            background: #fff;
-            padding: 10px;
-            border-radius: 4px;
-            margin-top: 10px;
         }
         .market-overview {
             display: grid;
@@ -157,68 +98,63 @@
             border-radius: 5px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        .trending-tokens {
+        .active-positions {
             margin-top: 20px;
-            background: white;
-            padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        .token-grid {
+        .positions-table {
+            margin-top: 10px;
+        }
+        .table-header {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 15px;
-            margin-top: 15px;
-        }
-        .token-card {
+            grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+            padding: 10px;
             background: #f5f5f5;
-            padding: 15px;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: transform 0.2s;
+            border-bottom: 1px solid #ddd;
         }
-        .token-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        .position-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
         }
-        .price-up {
+        .no-positions {
+            padding: 10px;
+            text-align: center;
+        }
+        .profit {
             color: #4caf50;
         }
-        .price-down {
+        .loss {
             color: #f44336;
         }
-        .token-metrics {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-top: 10px;
+        .close-position {
+            background: #f44336;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
             font-size: 14px;
         }
-        .metric-label {
-            color: #666;
+        .close-position:hover {
+            background: #c62828;
         }
-        .dex-link {
-            color: #512da8;
-            text-decoration: none;
-            font-size: 12px;
-            margin-top: 10px;
-            display: inline-block;
+        .trading-settings {
+            margin-top: 20px;
         }
-        .dex-link:hover {
-            text-decoration: underline;
-        }
-        .search-box {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+        .setting-group {
             margin-bottom: 15px;
         }
-        .bot-controls {
-            margin-bottom: 10px;
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #4a148c;
         }
-        .bot-status {
-            margin-top: 10px;
+        input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
         }
     </style>
 </head>
@@ -237,12 +173,12 @@
         
         <div id="status" class="status" style="display: none;"></div>
         
-        <div id="tradingPanel" class="trading-panel">
+        <div id="tradingPanel" class="trading-panel" style="display: none;">
             <div class="market-overview">
                 <div class="market-card">
                     <h3>Trading Bot Status</h3>
                     <div class="bot-controls">
-                        <button onclick="tradingBot.start()" id="startBot">Start Bot</button>
+                        <button onclick="tradingBot.start()" id="startBot" disabled>Start Bot</button>
                         <button onclick="tradingBot.stop()" id="stopBot" disabled>Stop Bot</button>
                     </div>
                     <div class="bot-status">
@@ -252,71 +188,58 @@
                     </div>
                 </div>
                 <div class="market-card">
-                    <h3>Market Overview</h3>
-                    <div id="marketMetrics">Loading market data...</div>
-                </div>
-                <div class="market-card">
-                    <h3>Token Search</h3>
-                    <input type="text" id="tokenSearch" class="search-box" placeholder="Search for tokens...">
-                    <div id="searchResults"></div>
+                    <h3>Trading Settings</h3>
+                    <div class="trading-settings">
+                        <div class="setting-group">
+                            <label>Trade Size:</label>
+                            <input type="number" id="tradeSize" value="0.1" min="0.1" step="0.1" max="10">
+                            <span>SOL</span>
+                        </div>
+                        <div class="setting-group">
+                            <label>Max Slippage:</label>
+                            <input type="number" id="maxSlippage" value="1.0" min="0.1" step="0.1" max="5">
+                            <span>%</span>
+                        </div>
+                        <div class="setting-group">
+                            <label>Profit Target:</label>
+                            <input type="number" id="profitTarget" value="5.0" min="1" step="0.5" max="100">
+                            <span>%</span>
+                        </div>
+                        <div class="setting-group">
+                            <label>Stop Loss:</label>
+                            <input type="number" id="stopLoss" value="2.0" min="0.5" step="0.5" max="10">
+                            <span>%</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="trending-tokens">
-                <h3>Trending on Solana</h3>
-                <div id="trendingTokens" class="token-grid">Loading trending tokens...</div>
-            </div>
-
-            <h2>Memecoin Trading</h2>
-            
-            <div class="trade-form">
-                <div class="form-group">
-                    <label>From (SOL)</label>
-                    <input type="number" id="fromAmount" min="0.1" step="0.1" value="0.1">
+            <div class="active-positions">
+                <h3>Active Positions</h3>
+                <div id="positionsTable" class="positions-table">
+                    <div class="table-header">
+                        <div>Token</div>
+                        <div>Entry Price</div>
+                        <div>Current Price</div>
+                        <div>P/L</div>
+                        <div>Actions</div>
+                    </div>
+                    <div id="positionsList">
+                        <!-- Positions will be added here dynamically -->
+                    </div>
                 </div>
-                
-                <div class="form-group">
-                    <label>To (Token)</label>
-                    <select id="toToken">
-                        <option value="BONK">BONK</option>
-                        <option value="WIF">WIF (dogwifhat)</option>
-                        <option value="MYRO">MYRO</option>
-                        <option value="POPCAT">POPCAT</option>
-                    </select>
-                </div>
-                
-                <div class="price-info">
-                    <p>Current Price: <span id="currentPrice">-</span></p>
-                    <p>Price Change: <span id="priceChange">-</span></p>
-                    <p>Estimated Output: <span id="estimatedOutput">-</span></p>
-                    <p>Price Impact: <span id="priceImpact">-</span></p>
-                    <p>Slippage: <span id="slippage">0.5%</span></p>
-                </div>
-            </div>
-            
-            <button onclick="executeSwap()" id="swapButton" disabled>Swap SOL for Memecoin</button>
-            
-            <div class="price-chart" id="priceChart">
-                <!-- Price chart will be rendered here -->
-            </div>
-            
-            <div class="details">
-                <h3>Trading Information:</h3>
-                <ul>
-                    <li>Using Jupiter DEX aggregator for best prices</li>
-                    <li>0.5% default slippage protection</li>
-                    <li>Real-time price monitoring</li>
-                    <li>Automatic transaction verification</li>
-                </ul>
             </div>
         </div>
     </div>
 
     <script src="jupiter.js"></script>
     <script src="wallet.js"></script>
-    <script src="dexscreener.js"></script>
     <script src="trading_bot.js"></script>
     <script>
+        // Initialize global variables
+        let walletConnected = false;
+        
+        // Wallet connection handler
         async function connectWallet() {
             try {
                 const connectButton = document.querySelector('.connect-button');
@@ -332,6 +255,19 @@
                 
                 // Show trading panel
                 document.getElementById('tradingPanel').style.display = 'block';
+                walletConnected = true;
+                
+                // Enable trading bot controls
+                document.getElementById('startBot').disabled = false;
+                
+                // Initialize trading settings from inputs
+                tradingBot.tradeSize = parseFloat(document.getElementById('tradeSize').value);
+                tradingBot.maxSlippage = parseFloat(document.getElementById('maxSlippage').value);
+                tradingBot.profitTarget = parseFloat(document.getElementById('profitTarget').value);
+                tradingBot.stopLoss = parseFloat(document.getElementById('stopLoss').value);
+                
+                // Setup trading settings listeners
+                setupTradingSettings();
                 
             } catch (error) {
                 console.error('Failed to connect wallet:', error);
@@ -350,322 +286,53 @@
                 `;
             }
         }
-        
-        let jupiter;
-        let dexscreener;
-        let walletConnected = false;
-        let priceMonitoringInterval;
-        
-        async function testWallet() {
-            const statusDiv = document.getElementById('status');
-            const tradingPanel = document.getElementById('tradingPanel');
-            statusDiv.style.display = 'block';
-            statusDiv.innerHTML = 'Testing wallet connection...';
+
+        function setupTradingSettings() {
+            // Update trading bot settings when inputs change
+            document.getElementById('tradeSize').addEventListener('change', (e) => {
+                tradingBot.tradeSize = parseFloat(e.target.value);
+            });
             
-            try {
-                const status = await checkTradingReadiness();
-                
-                if (status.ready) {
-                    statusDiv.className = 'status success';
-                    statusDiv.innerHTML = `
-                        <h3>✅ Wallet Ready!</h3>
-                        <p>${status.message}</p>
-                        <p>Username: ${status.username}</p>
-                        <p>Balance: ${status.balance.toFixed(4)} SOL</p>
-                        <p>Address: ${status.publicKey}</p>
-                    `;
-                    
-                    // Show trading panel
-                    tradingPanel.style.display = 'block';
-                    walletConnected = true;
-                    
-                    // Initialize trading systems
-                    jupiter = new JupiterDEX();
-                    dexscreener = new DexScreener();
-                    
-                    // Initialize all monitoring
-                    await Promise.all([
-                        initializePriceMonitoring(),
-                        updateTrendingTokens(),
-                        setupTokenSearch()
-                    ]);
-                    
-                    // Enable swap button
-                    document.getElementById('swapButton').disabled = false;
-                    
-                    // Start monitoring input amount for quotes
-                    document.getElementById('fromAmount').addEventListener('input', updateQuote);
-                    document.getElementById('toToken').addEventListener('change', () => {
-                        updateQuote();
-                        initializePriceMonitoring();
-                    });
-                } else {
-                    statusDiv.className = 'status error';
-                    statusDiv.innerHTML = `
-                        <h3>❌ Wallet Not Ready</h3>
-                        <p>${status.message}</p>
-                        <p>${status.details}</p>
-                        <p>Please make sure you're using the correct Phantom wallet account (etherly)</p>
-                    `;
-                    tradingPanel.style.display = 'none';
-                }
-            } catch (error) {
-                statusDiv.className = 'status error';
-                statusDiv.innerHTML = `
-                    <h3>❌ Error</h3>
-                    <p>${error.message}</p>
-                    <p>Common solutions:</p>
-                    <ul>
-                        <li>Make sure Phantom wallet is installed and unlocked</li>
-                        <li>Switch to the correct account (etherly)</li>
-                        <li>Check your internet connection</li>
-                        <li>Refresh the page and try again</li>
-                    </ul>
-                `;
-                tradingPanel.style.display = 'none';
-            }
-        }
-        
-        async function updateTrendingTokens() {
-            const trendingDiv = document.getElementById('trendingTokens');
+            document.getElementById('maxSlippage').addEventListener('change', (e) => {
+                tradingBot.maxSlippage = parseFloat(e.target.value);
+            });
             
-            try {
-                const trending = await dexscreener.getTrendingTokens();
-                
-                trendingDiv.innerHTML = trending.slice(0, 6).map(pair => `
-                    <div class="token-card" onclick="selectToken('${pair.baseToken.address}')">
-                        <h4>${pair.baseToken.symbol}</h4>
-                        <div class="token-metrics">
-                            <div>
-                                <div class="metric-label">Price</div>
-                                <div>$${dexscreener.formatPrice(pair.priceUsd)}</div>
-                            </div>
-                            <div>
-                                <div class="metric-label">24h Change</div>
-                                <div style="color: ${dexscreener.getPriceChangeColor(pair.priceChange.h24)}">
-                                    ${pair.priceChange.h24.toFixed(2)}%
-                                </div>
-                            </div>
-                            <div>
-                                <div class="metric-label">Volume 24h</div>
-                                <div>${dexscreener.formatMarketCap(pair.volume.h24)}</div>
-                            </div>
-                            <div>
-                                <div class="metric-label">Liquidity</div>
-                                <div>${dexscreener.formatMarketCap(pair.liquidity.usd)}</div>
-                            </div>
-                        </div>
-                        <a href="${pair.url}" target="_blank" class="dex-link">View on DexScreener</a>
-                    </div>
-                `).join('');
-            } catch (error) {
-                console.error('Error updating trending tokens:', error);
-                trendingDiv.innerHTML = 'Error loading trending tokens';
-            }
-        }
-        
-        async function setupTokenSearch() {
-            const searchInput = document.getElementById('tokenSearch');
-            const resultsDiv = document.getElementById('searchResults');
+            document.getElementById('profitTarget').addEventListener('change', (e) => {
+                tradingBot.profitTarget = parseFloat(e.target.value);
+            });
             
-            let timeoutId;
-            
-            searchInput.addEventListener('input', () => {
-                clearTimeout(timeoutId);
-                
-                timeoutId = setTimeout(async () => {
-                    const query = searchInput.value.trim();
-                    if (query.length < 2) {
-                        resultsDiv.innerHTML = '';
-                        return;
-                    }
-                    
-                    try {
-                        const results = await dexscreener.searchTokens(query);
-                        
-                        // Filter for Solana tokens only
-                        const solanaTokens = results.pairs.filter(pair => pair.chainId === 'solana');
-                        
-                        resultsDiv.innerHTML = solanaTokens.slice(0, 5).map(pair => `
-                            <div class="token-card" onclick="selectToken('${pair.baseToken.address}')">
-                                <h4>${pair.baseToken.symbol}</h4>
-                                <div class="token-metrics">
-                                    <div>
-                                        <div class="metric-label">Price</div>
-                                        <div>$${dexscreener.formatPrice(pair.priceUsd)}</div>
-                                    </div>
-                                    <div>
-                                        <div class="metric-label">24h Change</div>
-                                        <div style="color: ${dexscreener.getPriceChangeColor(pair.priceChange.h24)}">
-                                            ${pair.priceChange.h24.toFixed(2)}%
-                                        </div>
-                                    </div>
-                                </div>
-                                <a href="${pair.url}" target="_blank" class="dex-link">View on DexScreener</a>
-                            </div>
-                        `).join('');
-                    } catch (error) {
-                        console.error('Error searching tokens:', error);
-                        resultsDiv.innerHTML = 'Error searching tokens';
-                    }
-                }, 500);
+            document.getElementById('stopLoss').addEventListener('change', (e) => {
+                tradingBot.stopLoss = parseFloat(e.target.value);
             });
         }
-        
-        async function selectToken(address) {
-            try {
-                const metrics = await dexscreener.getTokenMetrics(address);
-                
-                // Update market metrics
-                document.getElementById('marketMetrics').innerHTML = `
-                    <div class="token-metrics">
-                        <div>
-                            <div class="metric-label">Price</div>
-                            <div>$${dexscreener.formatPrice(metrics.price)}</div>
-                        </div>
-                        <div>
-                            <div class="metric-label">24h Change</div>
-                            <div style="color: ${dexscreener.getPriceChangeColor(metrics.priceChange24h)}">
-                                ${metrics.priceChange24h.toFixed(2)}%
-                            </div>
-                        </div>
-                        <div>
-                            <div class="metric-label">Volume 24h</div>
-                            <div>${dexscreener.formatMarketCap(metrics.volume24h)}</div>
-                        </div>
-                        <div>
-                            <div class="metric-label">Market Cap</div>
-                            <div>${dexscreener.formatMarketCap(metrics.marketCap)}</div>
-                        </div>
-                    </div>
-                    <a href="${metrics.url}" target="_blank" class="dex-link">View on DexScreener</a>
-                `;
-                
-                // Start monitoring this pair
-                if (priceMonitoringInterval) {
-                    clearInterval(priceMonitoringInterval);
-                }
-                
-                priceMonitoringInterval = await dexscreener.monitorPair(metrics.pairAddress, updateTokenMetrics);
-            } catch (error) {
-                console.error('Error selecting token:', error);
-                document.getElementById('marketMetrics').innerHTML = 'Error loading token metrics';
-            }
-        }
-        
-        function updateTokenMetrics(metrics) {
-            const currentPrice = document.getElementById('currentPrice');
-            const priceChange = document.getElementById('priceChange');
+
+        // Update positions display
+        function updatePositionsDisplay() {
+            const positionsList = document.getElementById('positionsList');
+            const positions = Array.from(tradingBot.positions.entries());
             
-            currentPrice.textContent = `$${dexscreener.formatPrice(metrics.price)}`;
-            
-            if (metrics.priceChangeSinceLastUpdate !== undefined) {
-                const changeClass = metrics.priceChangeSinceLastUpdate >= 0 ? 'price-up' : 'price-down';
-                priceChange.className = changeClass;
-                priceChange.textContent = `${metrics.priceChangeSinceLastUpdate.toFixed(2)}%`;
-            }
-        }
-        
-        async function updateQuote() {
-            if (!walletConnected || !jupiter) return;
-            
-            const fromAmount = document.getElementById('fromAmount').value;
-            const toToken = document.getElementById('toToken').value;
-            const estimatedOutput = document.getElementById('estimatedOutput');
-            const priceImpact = document.getElementById('priceImpact');
-            
-            try {
-                const amountLamports = Math.floor(fromAmount * 1e9);
-                const quote = await jupiter.getQuote('SOL', toToken, amountLamports);
-                
-                estimatedOutput.textContent = `${quote.outputAmount.toFixed(2)} ${toToken}`;
-                priceImpact.textContent = `${quote.priceImpactPct.toFixed(2)}%`;
-                
-                // Disable swap if price impact is too high
-                const swapButton = document.getElementById('swapButton');
-                if (quote.priceImpactPct > 5) {
-                    swapButton.disabled = true;
-                    priceImpact.style.color = '#c62828';
-                    priceImpact.textContent += ' (Too high!)';
-                } else {
-                    swapButton.disabled = false;
-                    priceImpact.style.color = '';
-                }
-            } catch (error) {
-                console.error('Error updating quote:', error);
-                estimatedOutput.textContent = 'Error getting quote';
-                priceImpact.textContent = '-';
-            }
-        }
-        
-        async function initializePriceMonitoring() {
-            const tokenSelect = document.getElementById('toToken');
-            const currentPrice = document.getElementById('currentPrice');
-            const priceChange = document.getElementById('priceChange');
-            
-            // Clear existing interval if any
-            if (priceMonitoringInterval) {
-                clearInterval(priceMonitoringInterval);
-            }
-            
-            // Monitor selected token price
-            const selectedToken = tokenSelect.value;
-            priceMonitoringInterval = await jupiter.monitorPrice(selectedToken, (price, change, details) => {
-                currentPrice.textContent = `${price.toFixed(8)} SOL`;
-                if (change !== undefined) {
-                    const changeClass = change >= 0 ? 'success' : 'error';
-                    priceChange.className = changeClass;
-                    priceChange.textContent = `${change.toFixed(2)}%`;
-                }
-            });
-        }
-        
-        async function executeSwap() {
-            if (!walletConnected || !jupiter) {
-                alert('Please connect your wallet first');
+            if (positions.length === 0) {
+                positionsList.innerHTML = '<div class="no-positions">No active positions</div>';
                 return;
             }
             
-            const fromAmount = document.getElementById('fromAmount').value;
-            const toToken = document.getElementById('toToken').value;
-            const statusDiv = document.getElementById('status');
-            const swapButton = document.getElementById('swapButton');
-            
-            try {
-                swapButton.disabled = true;
-                statusDiv.className = 'status warning';
-                statusDiv.innerHTML = 'Preparing swap transaction...';
-                
-                const amountLamports = Math.floor(fromAmount * 1e9);
-                const result = await jupiter.executeSwap(
-                    window.solana,
-                    'SOL',
-                    toToken,
-                    amountLamports
-                );
-                
-                statusDiv.className = 'status success';
-                statusDiv.innerHTML = `
-                    <h3>✅ Swap Successful!</h3>
-                    <p>Transaction ID: ${result.txid}</p>
-                    <p>Input: ${fromAmount} SOL</p>
-                    <p>Output: ${result.quote.outputAmount.toFixed(2)} ${toToken}</p>
-                    <p>Price Impact: ${result.quote.priceImpactPct.toFixed(2)}%</p>
-                    <p><a href="https://solscan.io/tx/${result.txid}" target="_blank">View on Solscan</a></p>
-                `;
-            } catch (error) {
-                statusDiv.className = 'status error';
-                statusDiv.innerHTML = `
-                    <h3>❌ Swap Failed</h3>
-                    <p>${error.message}</p>
-                `;
-            } finally {
-                swapButton.disabled = false;
-            }
+            positionsList.innerHTML = positions.map(([address, position]) => `
+                <div class="position-row">
+                    <div>${position.symbol}</div>
+                    <div>$${position.entryPrice.toFixed(6)}</div>
+                    <div>$${position.currentPrice ? position.currentPrice.toFixed(6) : '...'}</div>
+                    <div class="${position.profitLoss >= 0 ? 'profit' : 'loss'}">
+                        ${position.profitLoss ? position.profitLoss.toFixed(2) : '0.00'}%
+                    </div>
+                    <div>
+                        <button onclick="tradingBot.closePosition('${address}')" class="close-position">Close</button>
+                    </div>
+                </div>
+            `).join('');
         }
-        
-        // Update UI elements
-        function updateBotStatus() {
+
+        // Listen for trading bot status updates
+        tradingBot.onStatusUpdate = () => {
             const botStatusSpan = document.getElementById('botStatus');
             const startButton = document.getElementById('startBot');
             const stopButton = document.getElementById('stopBot');
@@ -675,63 +342,14 @@
             stopButton.disabled = !tradingBot.active;
             
             document.getElementById('activeTrades').textContent = tradingBot.positions.size;
-        }
+            updatePositionsDisplay();
+        };
 
-        // Update market metrics
-        async function updateMarketMetrics() {
-            try {
-                const trending = await dexscreener.getTrendingTokens();
-                const metricsDiv = document.getElementById('marketMetrics');
-                
-                const totalVolume = trending.reduce((sum, token) => sum + token.volume24h, 0);
-                const avgPriceChange = trending.reduce((sum, token) => sum + token.priceChange24h, 0) / trending.length;
-                
-                metricsDiv.innerHTML = `
-                    <p>24h Volume: $${totalVolume.toLocaleString()}</p>
-                    <p>Avg Price Change: ${avgPriceChange.toFixed(2)}%</p>
-                    <p>Active Tokens: ${trending.length}</p>
-                `;
-                
-                // Update trending tokens display
-                const trendingDiv = document.getElementById('trendingTokens');
-                trendingDiv.innerHTML = trending.map(token => `
-                    <div class="token-card">
-                        <h4>${token.symbol}</h4>
-                        <p>Price: $${token.price.toFixed(6)}</p>
-                        <p>24h Change: ${token.priceChange24h.toFixed(2)}%</p>
-                        <p>24h Volume: $${token.volume24h.toLocaleString()}</p>
-                    </div>
-                `).join('');
-                
-            } catch (error) {
-                console.error('Error updating market metrics:', error);
-            }
-        }
-
-        // Initialize everything
-        async function initialize() {
-            try {
-                await updateMarketMetrics();
-                setInterval(updateMarketMetrics, 30000); // Update every 30 seconds
-                
-                // Add wallet connection handler
-                walletManager.onConnect(() => {
-                    updateBotStatus();
-                    document.getElementById('startBot').disabled = false;
-                });
-                
-                walletManager.onDisconnect(() => {
-                    tradingBot.stop();
-                    updateBotStatus();
-                    document.getElementById('startBot').disabled = true;
-                });
-                
-            } catch (error) {
-                console.error('Initialization error:', error);
-            }
-        }
-
-        initialize();
+        // Initialize everything when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initial positions update
+            updatePositionsDisplay();
+        });
     </script>
 </body>
 </html>
