@@ -77,6 +77,41 @@
                         <div id="max-positions-description" class="sr-only">Enter maximum number of concurrent positions between 1 and 10</div>
                     </div>
                 </div>
+
+                <div class="risk-management">
+                    <h3>Risk Management</h3>
+                    <div class="settings-group">
+                        <label for="max-daily-loss">Maximum Daily Loss (%)</label>
+                        <input type="number" id="max-daily-loss" min="0.1" max="100" step="0.1" value="5.0" 
+                               aria-describedby="max-daily-loss-description">
+                        <div id="max-daily-loss-description" class="sr-only">Maximum allowed daily loss percentage</div>
+
+                        <label for="max-position-size">Maximum Position Size (SOL)</label>
+                        <input type="number" id="max-position-size" min="0.1" max="10" step="0.1" value="1.0" 
+                               aria-describedby="max-position-size-description">
+                        <div id="max-position-size-description" class="sr-only">Maximum size for any single position in SOL</div>
+
+                        <label for="min-liquidity">Minimum Liquidity (SOL)</label>
+                        <input type="number" id="min-liquidity" min="100" max="10000" step="100" value="1000" 
+                               aria-describedby="min-liquidity-description">
+                        <div id="min-liquidity-description" class="sr-only">Minimum required liquidity in SOL for trading a token</div>
+
+                        <label for="min-volume">Minimum 24h Volume (SOL)</label>
+                        <input type="number" id="min-volume" min="10" max="10000" step="10" value="100" 
+                               aria-describedby="min-volume-description">
+                        <div id="min-volume-description" class="sr-only">Minimum required 24-hour trading volume in SOL</div>
+
+                        <label for="max-slippage-impact">Maximum Price Impact (%)</label>
+                        <input type="number" id="max-slippage-impact" min="0.1" max="10" step="0.1" value="2.0" 
+                               aria-describedby="max-slippage-impact-description">
+                        <div id="max-slippage-impact-description" class="sr-only">Maximum allowed price impact percentage for trades</div>
+
+                        <label for="cooldown-period">Cooldown Period (seconds)</label>
+                        <input type="number" id="cooldown-period" min="0" max="3600" step="60" value="300" 
+                               aria-describedby="cooldown-period-description">
+                        <div id="cooldown-period-description" class="sr-only">Waiting period after a loss before trading again</div>
+                    </div>
+                </div>
             </section>
 
             <!-- Trading panel -->

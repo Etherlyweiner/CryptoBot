@@ -9,6 +9,11 @@
     --border-radius: 8px;
     --spacing: 20px;
     --focus-outline: 3px solid #2196F3;
+    --bg-secondary: #f0f0f0;
+    --border-color: #ddd;
+    --bg-input: #fff;
+    --text-primary: #333;
+    --bg-panel: #fff;
 }
 
 /* Reset and base styles */
@@ -359,5 +364,78 @@ input[type="number"]::-webkit-outer-spin-button {
         animation: none !important;
         -webkit-transition: none !important;
         transition: none !important;
+    }
+}
+
+/* Settings styles */
+.settings-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 0.5rem;
+}
+
+.settings-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.settings-group input[type="number"] {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.25rem;
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+.settings-group input[type="checkbox"] {
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-right: 0.5rem;
+}
+
+.auto-trading,
+.risk-management {
+    margin: 2rem 0;
+    padding: 1rem;
+    background: var(--bg-panel);
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.auto-trading h3,
+.risk-management h3 {
+    margin: 0 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+/* High contrast mode support */
+@media (forced-colors: active) {
+    .settings-group {
+        border: 1px solid ButtonText;
+    }
+
+    .settings-group input[type="number"],
+    .settings-group input[type="checkbox"] {
+        border: 1px solid ButtonText;
+        background: Field;
+        color: FieldText;
+    }
+
+    .auto-trading,
+    .risk-management {
+        border: 2px solid ButtonText;
+    }
+
+    .auto-trading h3,
+    .risk-management h3 {
+        border-bottom-color: ButtonText;
     }
 }
