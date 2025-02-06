@@ -11,31 +11,41 @@ class JupiterDEX {
         try {
             console.log('Initializing Jupiter DEX...');
             
+            if (!window.JupiterApi) {
+                throw new Error('Jupiter API not loaded');
+            }
+            
             // Use Helius RPC endpoint
             const rpcEndpoint = 'https://staked.helius-rpc.com?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c';
+            const connection = new solanaWeb3.Connection(rpcEndpoint);
             
             // Initialize Jupiter SDK
-            const quoteApi = new window.JupiterApi.QuoteApi({
-                cluster: 'mainnet-beta',
-                connection: new solanaWeb3.Connection(rpcEndpoint)
-            });
-
-            const swapApi = new window.JupiterApi.SwapApi({
-                cluster: 'mainnet-beta',
-                connection: new solanaWeb3.Connection(rpcEndpoint)
-            });
-
             this.jupiter = {
-                quoteApi,
-                swapApi,
-                connection: new solanaWeb3.Connection(rpcEndpoint)
+                quoteApi: new window.JupiterApi.QuoteApi({
+                    cluster: 'mainnet-beta',
+                    connection: connection
+                }),
+                swapApi: new window.JupiterApi.SwapApi({
+                    cluster: 'mainnet-beta',
+                    connection: connection
+                }),
+                connection: connection
             };
+
+            // Test the connection
+            try {
+                await this.jupiter.connection.getRecentBlockhash();
+                console.log('Jupiter connection test successful');
+            } catch (error) {
+                throw new Error('Failed to connect to Solana: ' + error.message);
+            }
 
             this.initialized = true;
             console.log('Jupiter DEX initialized successfully');
             
         } catch (error) {
             console.error('Failed to initialize Jupiter:', error);
+            this.initialized = false;
             throw error;
         }
     }
@@ -46,117 +56,86 @@ class JupiterDEX {
                 await this.initialize();
             }
 
+            if (!this.jupiter?.quoteApi) {
+                throw new Error('Jupiter not initialized');
+            }
+
+            console.log('Getting quote:', {
+                inputMint: inputMint.toString(),
+                outputMint: outputMint.toString(),
+                amount: amount.toString(),
+                slippageBps
+            });
+
             const quoteResponse = await this.jupiter.quoteApi.getQuote({
                 inputMint: inputMint.toString(),
                 outputMint: outputMint.toString(),
                 amount: amount.toString(),
-                slippageBps: slippageBps.toString()
+                slippageBps
             });
 
-            if (!quoteResponse.data) {
-                throw new Error('No routes found');
-            }
-
-            const bestRoute = quoteResponse.data;
-            return {
-                inputAmount: amount,
-                outputAmount: parseFloat(bestRoute.outAmount),
-                priceImpactPct: parseFloat(bestRoute.priceImpactPct),
-                routeInfo: bestRoute,
-                fees: bestRoute.fees
-            };
-
+            return quoteResponse.data;
+            
         } catch (error) {
             console.error('Failed to get quote:', error);
             throw error;
         }
     }
 
-    async executeSwap(quote) {
+    async executeSwap(quote, wallet) {
         try {
             if (!this.initialized) {
                 await this.initialize();
             }
 
-            const swapResponse = await this.jupiter.swapApi.postSwap({
-                route: quote.routeInfo,
-                userPublicKey: window.walletManager.provider.publicKey.toString(),
-                wrapUnwrapSOL: true
-            });
-
-            if (!swapResponse.data) {
-                throw new Error('Failed to create swap transaction');
+            if (!this.jupiter?.swapApi) {
+                throw new Error('Jupiter not initialized');
             }
 
-            // Sign and send transaction
-            const transaction = solanaWeb3.Transaction.from(
-                Buffer.from(swapResponse.data.swapTransaction, 'base64')
-            );
-
-            const signature = await window.walletManager.provider.signAndSendTransaction(transaction);
-            
-            // Wait for confirmation
-            const confirmation = await window.walletManager.connection.confirmTransaction(signature);
-            
-            if (confirmation.value.err) {
-                throw new Error('Transaction failed to confirm');
-            }
-
-            return {
-                success: true,
-                txid: signature,
-                inputAmount: quote.inputAmount,
-                outputAmount: quote.outputAmount,
-                priceImpact: quote.priceImpactPct
-            };
-
-        } catch (error) {
-            console.error('Swap execution failed:', error);
-            throw error;
-        }
-    }
-
-    async getTokenBalance(tokenMint) {
-        try {
-            if (!window.walletManager.isConnected()) {
+            if (!wallet) {
                 throw new Error('Wallet not connected');
             }
 
-            const tokenAccount = await window.walletManager.connection.getParsedTokenAccountsByOwner(
-                window.walletManager.provider.publicKey,
-                { mint: new solanaWeb3.PublicKey(tokenMint) }
-            );
+            console.log('Executing swap with quote:', quote);
 
-            if (tokenAccount.value.length === 0) {
-                return 0;
-            }
+            const swapResult = await this.jupiter.swapApi.postSwap({
+                quoteResponse: quote,
+                userPublicKey: wallet.publicKey.toString(),
+                wrapUnwrapSOL: true,
+                computeUnitPriceMicroLamports: 1000
+            });
 
-            return tokenAccount.value[0].account.data.parsed.info.tokenAmount.uiAmount;
-
+            return swapResult.data;
+            
         } catch (error) {
-            console.error('Failed to get token balance:', error);
+            console.error('Failed to execute swap:', error);
             throw error;
         }
     }
 
-    async getTokenPrice(tokenMint) {
+    async getTokenPrice(mint) {
         try {
             if (!this.initialized) {
                 await this.initialize();
             }
 
-            // Get quote for 1 SOL worth of tokens
+            // Get quote for token to USDC (6 decimals)
             const quote = await this.getQuote(
-                this.TOKENS.SOL,
-                tokenMint,
-                1e9 // 1 SOL in lamports
+                mint,
+                'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+                1e9 // 1 token
             );
 
-            return quote.outputAmount;
-
+            // Convert to USD price
+            const price = quote.outAmount / 1e6; // USDC has 6 decimals
+            return price;
+            
         } catch (error) {
             console.error('Failed to get token price:', error);
             throw error;
         }
     }
 }
+
+// Initialize Jupiter DEX globally
+window.jupiter = new JupiterDEX();
