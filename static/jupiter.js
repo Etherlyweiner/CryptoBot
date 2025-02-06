@@ -1,141 +1,209 @@
+// Jupiter DEX integration
 class JupiterDEX {
     constructor() {
-        this.jupiter = null;
         this.initialized = false;
-        this.TOKENS = {
-            SOL: 'So11111111111111111111111111111111111111112'
-        };
+        this.connection = null;
+        this.jupiter = null;
     }
 
-    async initialize() {
+    async initialize(connection) {
         try {
             console.log('Initializing Jupiter DEX...');
+            this.connection = connection;
             
-            if (!window.JupiterApi) {
-                throw new Error('Jupiter API not loaded');
+            // Load Jupiter SDK
+            if (typeof Jupiter === 'undefined') {
+                throw new Error('Jupiter SDK not loaded');
             }
             
-            // Use Helius RPC endpoint
-            const rpcEndpoint = 'https://staked.helius-rpc.com?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c';
-            const connection = new solanaWeb3.Connection(rpcEndpoint);
-            
-            // Initialize Jupiter SDK
-            this.jupiter = {
-                quoteApi: new window.JupiterApi.QuoteApi({
-                    cluster: 'mainnet-beta',
-                    connection: connection
-                }),
-                swapApi: new window.JupiterApi.SwapApi({
-                    cluster: 'mainnet-beta',
-                    connection: connection
-                }),
-                connection: connection
-            };
-
-            // Test the connection
-            try {
-                await this.jupiter.connection.getRecentBlockhash();
-                console.log('Jupiter connection test successful');
-            } catch (error) {
-                throw new Error('Failed to connect to Solana: ' + error.message);
-            }
+            // Initialize Jupiter
+            this.jupiter = await Jupiter.load({
+                connection: this.connection,
+                cluster: 'mainnet-beta',
+                platformFeeAndAccounts: {
+                    feeBps: 20,
+                    feeAccounts: {}
+                }
+            });
 
             this.initialized = true;
             console.log('Jupiter DEX initialized successfully');
-            
+            return true;
         } catch (error) {
             console.error('Failed to initialize Jupiter:', error);
-            this.initialized = false;
             throw error;
         }
     }
 
-    async getQuote(inputMint, outputMint, amount, slippageBps = 100) {
+    async testConnection() {
         try {
             if (!this.initialized) {
-                await this.initialize();
+                throw new Error('Jupiter not initialized');
+            }
+            
+            // Test by getting a simple route
+            const routes = await this.jupiter.computeRoutes({
+                inputMint: NATIVE_MINT,
+                outputMint: USDC_MINT,
+                amount: JSBI.BigInt(100000), // 0.0001 SOL
+                slippageBps: 50,
+            });
+
+            if (!routes || !routes.routesInfos) {
+                throw new Error('Failed to compute routes');
             }
 
-            if (!this.jupiter?.quoteApi) {
+            console.log('Jupiter connection test successful');
+            return true;
+        } catch (error) {
+            console.error('Jupiter connection test failed:', error);
+            throw error;
+        }
+    }
+
+    async getMarketData() {
+        try {
+            if (!this.initialized) {
                 throw new Error('Jupiter not initialized');
             }
 
-            console.log('Getting quote:', {
-                inputMint: inputMint.toString(),
-                outputMint: outputMint.toString(),
-                amount: amount.toString(),
-                slippageBps
-            });
-
-            const quoteResponse = await this.jupiter.quoteApi.getQuote({
-                inputMint: inputMint.toString(),
-                outputMint: outputMint.toString(),
-                amount: amount.toString(),
-                slippageBps
-            });
-
-            return quoteResponse.data;
+            // Get token list
+            const tokens = await this.jupiter.getTokenList();
             
+            // Get market info for each token
+            const marketData = {
+                tokens: []
+            };
+
+            for (const token of tokens) {
+                try {
+                    const marketInfo = await this.jupiter.getMarketInfo(token.address);
+                    if (marketInfo) {
+                        marketData.tokens.push({
+                            address: token.address,
+                            symbol: token.symbol,
+                            liquidity: marketInfo.liquidity,
+                            volume24h: marketInfo.volume24h,
+                            price: marketInfo.price
+                        });
+                    }
+                } catch (err) {
+                    console.warn(`Failed to get market info for token ${token.symbol}:`, err);
+                }
+            }
+
+            return marketData;
         } catch (error) {
-            console.error('Failed to get quote:', error);
+            console.error('Failed to get market data:', error);
             throw error;
         }
     }
 
-    async executeSwap(quote, wallet) {
+    async getTokenMetadata(tokenAddress) {
         try {
             if (!this.initialized) {
-                await this.initialize();
-            }
-
-            if (!this.jupiter?.swapApi) {
                 throw new Error('Jupiter not initialized');
             }
 
-            if (!wallet) {
-                throw new Error('Wallet not connected');
+            const token = await this.jupiter.getToken(tokenAddress);
+            if (!token) {
+                throw new Error('Token not found');
             }
 
-            console.log('Executing swap with quote:', quote);
-
-            const swapResult = await this.jupiter.swapApi.postSwap({
-                quoteResponse: quote,
-                userPublicKey: wallet.publicKey.toString(),
-                wrapUnwrapSOL: true,
-                computeUnitPriceMicroLamports: 1000
-            });
-
-            return swapResult.data;
-            
+            return {
+                address: token.address,
+                symbol: token.symbol,
+                name: token.name,
+                decimals: token.decimals,
+                verified: token.verified || false
+            };
         } catch (error) {
-            console.error('Failed to execute swap:', error);
+            console.error('Failed to get token metadata:', error);
             throw error;
         }
     }
 
-    async getTokenPrice(mint) {
+    async getRecentTrades(tokenAddress) {
         try {
             if (!this.initialized) {
-                await this.initialize();
+                throw new Error('Jupiter not initialized');
             }
 
-            // Get quote for token to USDC (6 decimals)
-            const quote = await this.getQuote(
-                mint,
-                'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
-                1e9 // 1 token
-            );
-
-            // Convert to USD price
-            const price = quote.outAmount / 1e6; // USDC has 6 decimals
-            return price;
-            
+            const trades = await this.jupiter.getRecentTrades(tokenAddress);
+            return trades.map(trade => ({
+                price: trade.price,
+                size: trade.size,
+                side: trade.side,
+                time: trade.time
+            }));
         } catch (error) {
-            console.error('Failed to get token price:', error);
+            console.error('Failed to get recent trades:', error);
+            throw error;
+        }
+    }
+
+    async calculatePriceImpact(tokenAddress, amount) {
+        try {
+            if (!this.initialized) {
+                throw new Error('Jupiter not initialized');
+            }
+
+            const route = await this.jupiter.computeRoutes({
+                inputMint: NATIVE_MINT,
+                outputMint: tokenAddress,
+                amount: JSBI.BigInt(amount * 1e9), // Convert SOL to lamports
+                slippageBps: 50,
+            });
+
+            if (!route || !route.routesInfos || route.routesInfos.length === 0) {
+                throw new Error('No routes found');
+            }
+
+            return route.routesInfos[0].priceImpactPct;
+        } catch (error) {
+            console.error('Failed to calculate price impact:', error);
+            throw error;
+        }
+    }
+
+    async swap(params) {
+        try {
+            if (!this.initialized) {
+                throw new Error('Jupiter not initialized');
+            }
+
+            const { inputToken, outputToken, amount, slippage } = params;
+
+            // Compute routes
+            const routes = await this.jupiter.computeRoutes({
+                inputMint: inputToken === 'SOL' ? NATIVE_MINT : inputToken,
+                outputMint: outputToken === 'SOL' ? NATIVE_MINT : outputToken,
+                amount: JSBI.BigInt(amount * 1e9), // Convert SOL to lamports
+                slippageBps: slippage * 100,
+            });
+
+            if (!routes || !routes.routesInfos || routes.routesInfos.length === 0) {
+                throw new Error('No routes found');
+            }
+
+            // Execute swap
+            const result = await this.jupiter.exchange({
+                routeInfo: routes.routesInfos[0],
+            });
+
+            return {
+                success: true,
+                inputAmount: amount,
+                outputAmount: result.outputAmount / 1e9, // Convert lamports to SOL
+                txId: result.txid
+            };
+        } catch (error) {
+            console.error('Swap failed:', error);
             throw error;
         }
     }
 }
 
-// Initialize Jupiter DEX globally
+// Initialize and export Jupiter instance
 window.jupiter = new JupiterDEX();
+console.log('Jupiter instance created');

@@ -441,7 +441,7 @@ class TradingBot {
 // Initialize global variables
 let walletConnected = false;
 let jupiter = null;
-const tradingBot = new TradingBot();
+let tradingBot;
 
 // Status update handler
 function updateWalletStatus(status) {
@@ -694,73 +694,108 @@ async function connectWallet() {
     }
 }
 
-// Trading control event listeners
-document.getElementById('start-trading').addEventListener('click', async () => {
-    console.log('Start trading button clicked');
-    try {
-        // Validate settings before starting
-        const settings = validateSettings();
-        console.log('Validated settings:', settings);
-        if (!settings) {
-            showError('Please check your trading settings');
-            return;
+// Initialize trading bot
+tradingBot = new TradingBot();
+
+// Wait for DOM to be ready
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM loaded, initializing trading bot...');
+    
+    // Initialize trading controls
+    initializeTradingControls();
+});
+
+function initializeTradingControls() {
+    console.log('Initializing trading controls...');
+    
+    const startButton = document.getElementById('start-trading');
+    const stopButton = document.getElementById('stop-trading');
+    const statusDisplay = document.getElementById('trading-status');
+    
+    if (!startButton || !stopButton || !statusDisplay) {
+        console.error('Trading control elements not found:', {
+            startButton: !!startButton,
+            stopButton: !!stopButton,
+            statusDisplay: !!statusDisplay
+        });
+        return;
+    }
+    
+    console.log('Trading control elements found');
+
+    startButton.addEventListener('click', async () => {
+        console.log('Start trading button clicked');
+        try {
+            // Validate settings before starting
+            const settings = validateSettings();
+            console.log('Validated settings:', settings);
+            if (!settings) {
+                showError('Please check your trading settings');
+                return;
+            }
+
+            // Update UI
+            startButton.disabled = true;
+            stopButton.disabled = false;
+            statusDisplay.textContent = 'Trading Status: Starting...';
+            
+            // Apply settings to bot
+            Object.assign(tradingBot.settings, settings);
+            console.log('Applied settings to bot:', tradingBot.settings);
+            
+            // Enable auto trading
+            tradingBot.settings.autoTrading.enabled = true;
+            
+            // Start the bot
+            await tradingBot.start();
+            console.log('Bot started successfully');
+            
+            // Update status
+            statusDisplay.textContent = 'Trading Status: Active';
+            showSuccess('Autonomous trading started successfully');
+            
+            // Start checking for trading opportunities
+            tradingBot.startAutoTrading();
+            console.log('Auto trading started');
+            
+            // Disable settings while trading
+            disableSettings(true);
+            
+        } catch (error) {
+            console.error('Failed to start trading:', error);
+            showError('Failed to start trading: ' + error.message);
+            
+            // Reset UI
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            statusDisplay.textContent = 'Trading Status: Stopped';
+            disableSettings(false);
         }
+    });
 
-        // Update UI
-        document.getElementById('start-trading').disabled = true;
-        document.getElementById('stop-trading').disabled = false;
-        document.getElementById('trading-status').textContent = 'Trading Status: Starting...';
-        
-        // Apply settings to bot
-        Object.assign(tradingBot.settings, settings);
-        console.log('Applied settings to bot:', tradingBot.settings);
-        
-        // Start the bot
-        await tradingBot.start();
-        console.log('Bot started successfully');
-        
-        // Update status
-        document.getElementById('trading-status').textContent = 'Trading Status: Active';
-        showSuccess('Autonomous trading started successfully');
-        
-        // Start checking for trading opportunities
-        tradingBot.startAutoTrading();
-        console.log('Auto trading started');
-        
-        // Disable settings while trading
-        disableSettings(true);
-        
-    } catch (error) {
-        console.error('Failed to start trading:', error);
-        showError('Failed to start trading: ' + error.message);
-        
-        // Reset UI
-        document.getElementById('start-trading').disabled = false;
-        document.getElementById('stop-trading').disabled = true;
-        document.getElementById('trading-status').textContent = 'Trading Status: Stopped';
-        disableSettings(false);
-    }
-});
-
-document.getElementById('stop-trading').addEventListener('click', () => {
-    try {
-        // Stop the bot
-        tradingBot.stop();
-        
-        // Update UI
-        document.getElementById('start-trading').disabled = false;
-        document.getElementById('stop-trading').disabled = true;
-        document.getElementById('trading-status').textContent = 'Trading Status: Stopped';
-        showSuccess('Trading stopped successfully');
-        
-        // Re-enable settings
-        disableSettings(false);
-        
-    } catch (error) {
-        console.error('Failed to stop trading:', error);
-        showError('Failed to stop trading: ' + error.message);
-    }
-});
+    stopButton.addEventListener('click', () => {
+        console.log('Stop trading button clicked');
+        try {
+            // Stop the bot
+            tradingBot.stop();
+            
+            // Update UI
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            statusDisplay.textContent = 'Trading Status: Stopped';
+            showSuccess('Trading stopped successfully');
+            
+            // Re-enable settings
+            disableSettings(false);
+            
+        } catch (error) {
+            console.error('Failed to stop trading:', error);
+            showError('Failed to stop trading: ' + error.message);
+        }
+    });
+    
+    console.log('Trading controls initialized');
+}
 
 function validateSettings() {
     // Get all settings
