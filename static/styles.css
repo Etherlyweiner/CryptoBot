@@ -26,13 +26,11 @@ html {
     font-size: 16px;
     line-height: 1.5;
     
-    /* Prevent mobile browsers from automatically adjusting font size */
-    -webkit-text-size-adjust: none;
-    -moz-text-size-adjust: none;
-    -ms-text-size-adjust: none;
+    /* Modern text-size-adjust property */
+    text-size-adjust: 100%;
     
     /* Use viewport units as a responsive alternative */
-    font-size: calc(14px + 0.390625vw);
+    font-size: clamp(14px, calc(14px + 0.390625vw), 18px);
     
     /* Tab size consistency */
     -moz-tab-size: 4;
@@ -43,8 +41,15 @@ html {
 /* Ensure proper text sizing on different devices */
 @media screen and (max-width: 768px) {
     html {
-        /* Slightly smaller base size for mobile */
-        font-size: calc(13px + 0.390625vw);
+        /* Responsive font size with clamp for better control */
+        font-size: clamp(13px, calc(13px + 0.390625vw), 16px);
+    }
+}
+
+/* Prevent text size adjustment on orientation change */
+@media screen and (orientation: landscape) {
+    html {
+        text-size-adjust: 100%;
     }
 }
 
