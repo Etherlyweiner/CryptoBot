@@ -1,21 +1,145 @@
 // Jupiter DEX Integration
 class JupiterDEX {
     constructor() {
-        // Use Helius RPC endpoint for better reliability
+        this.jupiter = null;
+        this.initialized = false;
         this.connection = new solanaWeb3.Connection('https://staked.helius-rpc.com?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c');
-        
-        // Token addresses
         this.TOKENS = {
             SOL: 'So11111111111111111111111111111111111111112',  // Wrapped SOL
             BONK: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',  // BONK
             WIF: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm',   // WIF (dogwifhat)
-            MYRO: 'HCgybxq5Upy8Mccihrp7EsmwwFqYZtrHrsmsKwtGXLgW',  // MYRO
-            POPCAT: 'p0pCAt9Y6zw6YgNpkpNHWv2hNuLzrZ3q7pB3rHJGaZ'   // POPCAT
+            MYRO: 'HhJpBhRRn4g56VsyLuT8DL5Bv31HkXqsrahTTUCZeZg4',  // MYRO
+            POPCAT: 'p0pCat7gYwwtHrXs8EFUKKiuZPUGHthVbRsxQKQ8Yw8'   // POPCAT
         };
-        
-        // Default settings
         this.DEFAULT_SLIPPAGE = 100; // 1% slippage for memecoins
         this.PRIORITY_FEE = 100000; // 0.0001 SOL priority fee
+    }
+
+    async initialize() {
+        try {
+            console.log('Initializing Jupiter DEX...');
+            
+            // Load Jupiter API
+            this.jupiter = new Jupiter.Load({
+                connection: this.connection,
+                cluster: 'mainnet-beta',
+                user: walletManager.provider,
+                platformFeeAndAccounts: {
+                    feeBps: 50,  // 0.5% fee
+                    feeAccounts: {
+                        // Your fee account for collecting trading fees
+                        [this.TOKENS.SOL]: 'etherlyweiner'
+                    }
+                }
+            });
+
+            await this.jupiter.init();
+            this.initialized = true;
+            console.log('Jupiter DEX initialized successfully');
+            
+        } catch (error) {
+            console.error('Failed to initialize Jupiter:', error);
+            throw error;
+        }
+    }
+
+    async getQuote(inputMint, outputMint, amount, slippageBps = 100) {
+        try {
+            if (!this.initialized) {
+                await this.initialize();
+            }
+
+            const quote = await this.jupiter.quoteSwap({
+                inputMint,
+                outputMint,
+                amount,
+                slippageBps,
+                onlyDirectRoutes: false
+            });
+
+            return {
+                inputAmount: amount,
+                outputAmount: quote.outAmount,
+                priceImpactPct: quote.priceImpactPct,
+                routeInfo: quote.routeInfo,
+                fees: quote.fees
+            };
+
+        } catch (error) {
+            console.error('Failed to get quote:', error);
+            throw error;
+        }
+    }
+
+    async executeSwap(quote) {
+        try {
+            if (!this.initialized) {
+                await this.initialize();
+            }
+
+            const result = await this.jupiter.exchange({
+                routeInfo: quote.routeInfo
+            });
+
+            // Wait for transaction confirmation
+            const confirmation = await this.connection.confirmTransaction(result.txid);
+            
+            if (confirmation.value.err) {
+                throw new Error('Transaction failed to confirm');
+            }
+
+            return {
+                success: true,
+                txid: result.txid,
+                inputAmount: quote.inputAmount,
+                outputAmount: quote.outputAmount,
+                priceImpact: quote.priceImpactPct
+            };
+
+        } catch (error) {
+            console.error('Swap execution failed:', error);
+            throw error;
+        }
+    }
+
+    async getTokenBalance(tokenMint) {
+        try {
+            if (!walletManager.isConnected()) {
+                throw new Error('Wallet not connected');
+            }
+
+            const tokenAccount = await this.jupiter.getTokenAccountInfo(
+                walletManager.provider.publicKey,
+                tokenMint
+            );
+
+            return tokenAccount ? tokenAccount.balance : 0;
+
+        } catch (error) {
+            console.error('Failed to get token balance:', error);
+            throw error;
+        }
+    }
+
+    async getTokenPrice(tokenMint) {
+        try {
+            if (!this.initialized) {
+                await this.initialize();
+            }
+
+            // Get quote for 1 SOL worth of tokens
+            const quote = await this.getQuote(
+                this.TOKENS.SOL,
+                tokenMint,
+                1e9 // 1 SOL in lamports
+            );
+
+            return quote.outputAmount;
+
+        } catch (error) {
+            console.error('Failed to get token price:', error);
+            throw error;
+        }
     }
 
     // Get token address by symbol
@@ -36,7 +160,7 @@ class JupiterDEX {
     }
 
     // Get quote for token swap
-    async getQuote(inputMint, outputMint, amount, slippageBps = this.DEFAULT_SLIPPAGE) {
+    async getQuoteLegacy(inputMint, outputMint, amount, slippageBps = this.DEFAULT_SLIPPAGE) {
         try {
             // Convert token symbols to addresses if needed
             const fromToken = this.getTokenAddress(inputMint) || inputMint;
@@ -69,10 +193,10 @@ class JupiterDEX {
     }
 
     // Execute swap transaction
-    async executeSwap(wallet, inputMint, outputMint, amount, slippageBps = this.DEFAULT_SLIPPAGE) {
+    async executeSwapLegacy(wallet, inputMint, outputMint, amount, slippageBps = this.DEFAULT_SLIPPAGE) {
         try {
             // 1. Get quote
-            const quote = await this.getQuote(inputMint, outputMint, amount, slippageBps);
+            const quote = await this.getQuoteLegacy(inputMint, outputMint, amount, slippageBps);
             
             // 2. Get serialized transactions
             const swapRequestBody = {
@@ -121,22 +245,6 @@ class JupiterDEX {
             };
         } catch (error) {
             console.error('Error executing swap:', error);
-            throw error;
-        }
-    }
-
-    // Get token price in SOL
-    async getTokenPrice(tokenMint) {
-        try {
-            const amount = 1_000_000_000; // 1 SOL in lamports
-            const quote = await this.getQuote('SOL', tokenMint, amount);
-            return {
-                price: quote.outputAmount,
-                priceImpactPct: quote.priceImpactPct,
-                timestamp: Date.now()
-            };
-        } catch (error) {
-            console.error('Error getting token price:', error);
             throw error;
         }
     }
