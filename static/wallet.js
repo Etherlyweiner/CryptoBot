@@ -269,7 +269,7 @@ const checkTradingReadiness = async () => {
             balance: walletStatus.balance,
             tokenBalances,
             publicKey: walletStatus.publicKey,
-            username: 'etherly'
+            username: 'etherlyweiner'
         };
     } catch (error) {
         return {
