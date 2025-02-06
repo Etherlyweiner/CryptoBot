@@ -156,6 +156,56 @@
             border: 1px solid #ddd;
             border-radius: 4px;
         }
+        .token-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .token-card {
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .token-metrics {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .token-price {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .token-change {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .token-change.positive {
+            color: #4caf50;
+        }
+        .token-change.negative {
+            color: #f44336;
+        }
+        .token-volume {
+            color: #666;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .refresh-button {
+            background: #1a237e;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .refresh-button:hover {
+            background: #283593;
+        }
     </style>
 </head>
 <body>
@@ -185,6 +235,29 @@
                         <p>Status: <span id="botStatus">Inactive</span></p>
                         <p>Active Trades: <span id="activeTrades">0</span></p>
                         <p>Total Profit: <span id="totalProfit">0.00 SOL</span></p>
+                    </div>
+                </div>
+                <div class="market-card">
+                    <h3>Market Overview</h3>
+                    <div id="marketOverview">
+                        <div class="token-grid">
+                            <div class="token-card" id="bonkCard">
+                                <h4>BONK</h4>
+                                <div class="token-metrics">Loading...</div>
+                            </div>
+                            <div class="token-card" id="wifCard">
+                                <h4>WIF</h4>
+                                <div class="token-metrics">Loading...</div>
+                            </div>
+                            <div class="token-card" id="myroCard">
+                                <h4>MYRO</h4>
+                                <div class="token-metrics">Loading...</div>
+                            </div>
+                            <div class="token-card" id="popcatCard">
+                                <h4>POPCAT</h4>
+                                <div class="token-metrics">Loading...</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="market-card">
@@ -238,6 +311,8 @@
     <script>
         // Initialize global variables
         let walletConnected = false;
+        let jupiter;
+        let priceUpdateInterval;
         
         // Wallet connection handler
         async function connectWallet() {
@@ -256,6 +331,14 @@
                 // Show trading panel
                 document.getElementById('tradingPanel').style.display = 'block';
                 walletConnected = true;
+                
+                // Initialize Jupiter
+                jupiter = new JupiterDEX();
+                await jupiter.initialize();
+                
+                // Start price updates
+                await updateTokenPrices();
+                priceUpdateInterval = setInterval(updateTokenPrices, 30000);
                 
                 // Enable trading bot controls
                 document.getElementById('startBot').disabled = false;
@@ -304,6 +387,50 @@
             document.getElementById('stopLoss').addEventListener('change', (e) => {
                 tradingBot.stopLoss = parseFloat(e.target.value);
             });
+        }
+
+        async function updateTokenPrices() {
+            if (!jupiter || !jupiter.initialized) return;
+            
+            const tokens = ['BONK', 'WIF', 'MYRO', 'POPCAT'];
+            const lastPrices = new Map();
+            
+            for (const token of tokens) {
+                try {
+                    const tokenCard = document.getElementById(`${token.toLowerCase()}Card`);
+                    const metricsDiv = tokenCard.querySelector('.token-metrics');
+                    
+                    // Get current price
+                    const price = await jupiter.getTokenPrice(jupiter.TOKENS[token]);
+                    const priceInUSD = price / 1e9; // Convert from lamports
+                    
+                    // Get previous price if available
+                    const lastPrice = lastPrices.get(token);
+                    const priceChange = lastPrice ? ((priceInUSD - lastPrice) / lastPrice) * 100 : 0;
+                    
+                    // Store current price for next update
+                    lastPrices.set(token, priceInUSD);
+                    
+                    // Update UI
+                    metricsDiv.innerHTML = `
+                        <div class="token-price">$${priceInUSD.toFixed(8)}</div>
+                        <div class="token-change ${priceChange >= 0 ? 'positive' : 'negative'}">
+                            ${priceChange >= 0 ? '↑' : '↓'} ${Math.abs(priceChange).toFixed(2)}%
+                        </div>
+                        <div class="token-volume">
+                            <a href="https://solscan.io/token/${jupiter.TOKENS[token]}" target="_blank">
+                                View on Solscan
+                            </a>
+                        </div>
+                    `;
+                    
+                } catch (error) {
+                    console.error(`Error updating ${token} price:`, error);
+                    const tokenCard = document.getElementById(`${token.toLowerCase()}Card`);
+                    const metricsDiv = tokenCard.querySelector('.token-metrics');
+                    metricsDiv.innerHTML = 'Error loading price data';
+                }
+            }
         }
 
         // Update positions display
