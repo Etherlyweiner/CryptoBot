@@ -311,26 +311,44 @@ function setupTradingSettings() {
         'profit-target': 'profitTarget',
         'stop-loss': 'stopLoss',
         'auto-trading-enabled': 'autoTrading.enabled',
-        'auto-trading-interval': 'autoTrading.interval',
-        'auto-trading-max-positions': 'autoTrading.maxPositions'
+        'trading-interval': 'autoTrading.interval',
+        'max-positions': 'autoTrading.maxPositions'
     };
 
     Object.entries(settingsMap).forEach(([elementId, settingKey]) => {
         const input = document.getElementById(elementId);
         if (input) {
             // Set initial value
-            const currentValue = tradingBot.settings[settingKey];
+            const currentValue = settingKey.includes('.')
+                ? settingKey.split('.').reduce((obj, key) => obj[key], tradingBot.settings)
+                : tradingBot.settings[settingKey];
+
             if (typeof currentValue !== 'undefined') {
-                input.value = currentValue;
+                if (input.type === 'checkbox') {
+                    input.checked = currentValue;
+                } else {
+                    input.value = currentValue;
+                }
             }
 
             // Add change listener
             input.addEventListener('change', (e) => {
-                const success = tradingBot.updateSetting(settingKey, e.target.value);
+                const value = input.type === 'checkbox' ? e.target.checked : e.target.value;
+                const success = tradingBot.updateSetting(settingKey, value);
                 if (!success) {
                     showError(`Invalid value for ${elementId.replace('-', ' ')}`);
                     // Reset to last valid value
-                    e.target.value = tradingBot.settings[settingKey];
+                    if (input.type === 'checkbox') {
+                        input.checked = currentValue;
+                    } else {
+                        input.value = currentValue;
+                    }
+                } else {
+                    // Announce setting change to screen readers
+                    const announcement = document.getElementById('trading-announcements');
+                    if (announcement) {
+                        announcement.textContent = `${elementId.replace('-', ' ')} updated to ${value}`;
+                    }
                 }
             });
         } else {
