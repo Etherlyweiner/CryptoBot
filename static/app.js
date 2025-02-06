@@ -7,29 +7,180 @@ class TradingBot {
             tradeSize: 0.1,
             maxSlippage: 1.0,
             profitTarget: 10.0,
-            stopLoss: 5.0
+            stopLoss: 5.0,
+            autoTrading: {
+                enabled: false,
+                interval: 5,
+                maxPositions: 3
+            }
         };
         this.onStatusUpdate = null;
         this.initialized = false;
+        this.autoTradingInterval = null;
     }
 
     start() {
         this.active = true;
+        if (this.settings.autoTrading.enabled) {
+            this.startAutoTrading();
+        }
         if (this.onStatusUpdate) this.onStatusUpdate();
     }
 
     stop() {
         this.active = false;
+        this.stopAutoTrading();
         if (this.onStatusUpdate) this.onStatusUpdate();
+    }
+
+    startAutoTrading() {
+        if (this.autoTradingInterval) {
+            clearInterval(this.autoTradingInterval);
+        }
+
+        // Convert minutes to milliseconds
+        const interval = this.settings.autoTrading.interval * 60 * 1000;
+        
+        this.autoTradingInterval = setInterval(async () => {
+            await this.executeAutoTrade();
+        }, interval);
+
+        console.log('Auto trading started with interval:', this.settings.autoTrading.interval, 'minutes');
+    }
+
+    stopAutoTrading() {
+        if (this.autoTradingInterval) {
+            clearInterval(this.autoTradingInterval);
+            this.autoTradingInterval = null;
+            console.log('Auto trading stopped');
+        }
+    }
+
+    async executeAutoTrade() {
+        if (!this.active || !this.settings.autoTrading.enabled) {
+            this.stopAutoTrading();
+            return;
+        }
+
+        try {
+            // Check if we can open new positions
+            if (this.positions.size >= this.settings.autoTrading.maxPositions) {
+                console.log('Maximum positions reached');
+                return;
+            }
+
+            // Get market data from Jupiter
+            const marketData = await window.jupiter.getMarketData();
+            if (!marketData) {
+                console.warn('No market data available');
+                return;
+            }
+
+            // Find trading opportunities
+            const opportunity = await this.findTradingOpportunity(marketData);
+            if (opportunity) {
+                await this.executeTrade(opportunity);
+            }
+
+            // Check existing positions
+            await this.checkExistingPositions();
+
+        } catch (error) {
+            console.error('Auto trading error:', error);
+            showError('Auto trading error: ' + error.message);
+        }
+    }
+
+    async findTradingOpportunity(marketData) {
+        // Implement your trading strategy here
+        // This is a placeholder implementation
+        const tokens = marketData.tokens || [];
+        
+        for (const token of tokens) {
+            // Check token metrics (volume, liquidity, etc.)
+            if (this.isGoodTradeOpportunity(token)) {
+                return {
+                    token: token.address,
+                    action: 'buy',
+                    amount: this.settings.tradeSize
+                };
+            }
+        }
+        
+        return null;
+    }
+
+    isGoodTradeOpportunity(token) {
+        // Implement your token evaluation logic here
+        // This is a placeholder implementation
+        const minLiquidity = 1000; // Minimum liquidity in SOL
+        const minVolume = 100; // Minimum 24h volume in SOL
+        
+        return token.liquidity >= minLiquidity && 
+               token.volume24h >= minVolume;
+    }
+
+    async executeTrade(opportunity) {
+        try {
+            if (opportunity.action === 'buy') {
+                await window.jupiter.swap({
+                    inputToken: 'SOL',
+                    outputToken: opportunity.token,
+                    amount: opportunity.amount,
+                    slippage: this.settings.maxSlippage
+                });
+            } else {
+                await window.jupiter.swap({
+                    inputToken: opportunity.token,
+                    outputToken: 'SOL',
+                    amount: opportunity.amount,
+                    slippage: this.settings.maxSlippage
+                });
+            }
+            
+            updatePositionsDisplay();
+            
+        } catch (error) {
+            console.error('Trade execution error:', error);
+            showError('Failed to execute trade: ' + error.message);
+        }
+    }
+
+    async checkExistingPositions() {
+        for (const [address, position] of this.positions.entries()) {
+            try {
+                const currentPrice = await window.jupiter.getTokenPrice(address);
+                const pnlPercent = ((currentPrice - position.entryPrice) / position.entryPrice) * 100;
+                
+                // Check if we should close the position
+                if (pnlPercent >= this.settings.profitTarget || 
+                    pnlPercent <= -this.settings.stopLoss) {
+                    await this.closePosition(address);
+                }
+                
+            } catch (error) {
+                console.error('Error checking position:', error);
+            }
+        }
     }
 
     async closePosition(address) {
         if (!this.positions.has(address)) return;
         
         try {
-            // Close position logic here
+            const position = this.positions.get(address);
+            await window.jupiter.swap({
+                inputToken: address,
+                outputToken: 'SOL',
+                amount: position.amount,
+                slippage: this.settings.maxSlippage
+            });
+            
             this.positions.delete(address);
+            updatePositionsDisplay();
+            
             if (this.onStatusUpdate) this.onStatusUpdate();
+            
         } catch (error) {
             console.error('Error closing position:', error);
             showError('Failed to close position: ' + error.message);
@@ -37,13 +188,44 @@ class TradingBot {
     }
 
     updateSetting(property, value) {
-        if (property in this.settings) {
-            const numValue = parseFloat(value);
-            if (!isNaN(numValue)) {
-                this.settings[property] = numValue;
+        const numValue = parseFloat(value);
+        
+        // Handle auto trading settings
+        if (property === 'autoTrading.enabled') {
+            this.settings.autoTrading.enabled = value === true;
+            if (this.active && this.settings.autoTrading.enabled) {
+                this.startAutoTrading();
+            } else {
+                this.stopAutoTrading();
+            }
+            return true;
+        }
+        
+        if (property === 'autoTrading.interval') {
+            if (!isNaN(numValue) && numValue >= 1 && numValue <= 1440) {
+                this.settings.autoTrading.interval = numValue;
+                if (this.active && this.settings.autoTrading.enabled) {
+                    this.startAutoTrading(); // Restart with new interval
+                }
                 return true;
             }
+            return false;
         }
+        
+        if (property === 'autoTrading.maxPositions') {
+            if (!isNaN(numValue) && numValue >= 1 && numValue <= 10) {
+                this.settings.autoTrading.maxPositions = numValue;
+                return true;
+            }
+            return false;
+        }
+        
+        // Handle regular settings
+        if (property in this.settings && !isNaN(numValue)) {
+            this.settings[property] = numValue;
+            return true;
+        }
+        
         return false;
     }
 }
@@ -127,7 +309,10 @@ function setupTradingSettings() {
         'max-slippage': 'maxSlippage',
         'trade-size': 'tradeSize',
         'profit-target': 'profitTarget',
-        'stop-loss': 'stopLoss'
+        'stop-loss': 'stopLoss',
+        'auto-trading-enabled': 'autoTrading.enabled',
+        'auto-trading-interval': 'autoTrading.interval',
+        'auto-trading-max-positions': 'autoTrading.maxPositions'
     };
 
     Object.entries(settingsMap).forEach(([elementId, settingKey]) => {
