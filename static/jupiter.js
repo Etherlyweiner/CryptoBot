@@ -48,11 +48,10 @@ class JupiterDEX {
             }
 
             const quoteResponse = await this.jupiter.quoteApi.getQuote({
-                inputMint: new solanaWeb3.PublicKey(inputMint),
-                outputMint: new solanaWeb3.PublicKey(outputMint),
+                inputMint: inputMint.toString(),
+                outputMint: outputMint.toString(),
                 amount: amount.toString(),
-                slippageBps: slippageBps.toString(),
-                onlyDirectRoutes: false
+                slippageBps: slippageBps.toString()
             });
 
             if (!quoteResponse.data) {
@@ -62,8 +61,8 @@ class JupiterDEX {
             const bestRoute = quoteResponse.data;
             return {
                 inputAmount: amount,
-                outputAmount: bestRoute.outAmount,
-                priceImpactPct: bestRoute.priceImpactPct,
+                outputAmount: parseFloat(bestRoute.outAmount),
+                priceImpactPct: parseFloat(bestRoute.priceImpactPct),
                 routeInfo: bestRoute,
                 fees: bestRoute.fees
             };
