@@ -12,6 +12,7 @@ class JupiterDEX {
         };
         this.DEFAULT_SLIPPAGE = 100; // 1% slippage for memecoins
         this.PRIORITY_FEE = 100000; // 0.0001 SOL priority fee
+        this.priceMonitors = {};
     }
 
     async initialize() {
@@ -34,6 +35,9 @@ class JupiterDEX {
 
             this.initialized = true;
             console.log('Jupiter DEX initialized successfully');
+            
+            // Start monitoring prices
+            await this.startPriceMonitoring();
             
         } catch (error) {
             console.error('Failed to initialize Jupiter:', error);
@@ -159,6 +163,47 @@ class JupiterDEX {
             console.error('Failed to get token price:', error);
             throw error;
         }
+    }
+
+    async startPriceMonitoring() {
+        // Monitor prices for all tokens
+        for (const [token, mint] of Object.entries(this.TOKENS)) {
+            if (token === 'SOL') continue; // Skip SOL as it's our base currency
+            
+            let lastPrice = null;
+            
+            this.priceMonitors[token] = setInterval(async () => {
+                try {
+                    const currentPrice = await this.getTokenPrice(mint);
+                    const priceChange = lastPrice ? ((currentPrice - lastPrice) / lastPrice) * 100 : 0;
+                    
+                    // Update UI
+                    const priceElement = document.getElementById(`${token.toLowerCase()}Price`);
+                    const changeElement = document.getElementById(`${token.toLowerCase()}Change`);
+                    
+                    if (priceElement) {
+                        priceElement.textContent = currentPrice.toFixed(8);
+                    }
+                    
+                    if (changeElement) {
+                        changeElement.textContent = `${priceChange >= 0 ? '+' : ''}${priceChange.toFixed(2)}%`;
+                        changeElement.className = `token-change ${priceChange >= 0 ? 'profit' : 'loss'}`;
+                    }
+                    
+                    lastPrice = currentPrice;
+                } catch (error) {
+                    console.error('Error monitoring price:', error);
+                }
+            }, 10000); // Update every 10 seconds
+        }
+    }
+
+    stopPriceMonitoring() {
+        // Clear all price monitors
+        for (const interval of Object.values(this.priceMonitors)) {
+            clearInterval(interval);
+        }
+        this.priceMonitors = {};
     }
 
     // Get token address by symbol

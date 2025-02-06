@@ -272,6 +272,24 @@
         .refresh-button:hover {
             background: #283593;
         }
+        .token-change {
+            font-size: 12px;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .profit {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .loss {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .token-price {
+            font-family: monospace;
+            font-size: 14px;
+            margin: 5px 0;
+        }
     </style>
 </head>
 <body>
@@ -337,6 +355,31 @@
                                 <h4>POPCAT</h4>
                                 <div class="token-metrics">Loading...</div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="market-card">
+                    <h3>Price Monitor</h3>
+                    <div class="token-grid">
+                        <div class="token-item">
+                            <div class="token-name">BONK</div>
+                            <div id="bonkPrice" class="token-price">Loading...</div>
+                            <div id="bonkChange" class="token-change">-</div>
+                        </div>
+                        <div class="token-item">
+                            <div class="token-name">WIF</div>
+                            <div id="wifPrice" class="token-price">Loading...</div>
+                            <div id="wifChange" class="token-change">-</div>
+                        </div>
+                        <div class="token-item">
+                            <div class="token-name">MYRO</div>
+                            <div id="myroPrice" class="token-price">Loading...</div>
+                            <div id="myroChange" class="token-change">-</div>
+                        </div>
+                        <div class="token-item">
+                            <div class="token-name">POPCAT</div>
+                            <div id="popcatPrice" class="token-price">Loading...</div>
+                            <div id="popcatChange" class="token-change">-</div>
                         </div>
                     </div>
                 </div>
