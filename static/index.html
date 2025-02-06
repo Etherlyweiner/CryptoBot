@@ -7,6 +7,10 @@
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@solana/spl-token@0.3.11/lib/index.iife.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jup-ag/core@4.0.0-beta.18/dist/index.umd.js"></script>
+    <script src="wallet.js"></script>
+    <script src="jupiter.js"></script>
+    <script src="birdeye.js"></script>
+    <script src="trading_bot.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -168,6 +172,11 @@
             padding: 15px;
             border-radius: 5px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .token-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
         }
         .token-metrics {
             margin-top: 10px;
@@ -193,6 +202,26 @@
             color: #666;
             font-size: 12px;
             margin-top: 5px;
+        }
+        .token-liquidity {
+            color: #666;
+            font-size: 12px;
+        }
+        .new-launch-badge {
+            background: #ff9800;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+        .opportunity-badge {
+            background: #4caf50;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-left: 5px;
         }
         .refresh-button {
             background: #1a237e;
@@ -226,6 +255,18 @@
         
         <div id="tradingPanel" class="trading-panel" style="display: none;">
             <div class="market-overview">
+                <div class="market-card">
+                    <h3>Trending Tokens</h3>
+                    <div id="trendingTokens" class="token-grid">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+                <div class="market-card">
+                    <h3>New Launches</h3>
+                    <div id="newLaunches" class="token-grid">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
                 <div class="market-card">
                     <h3>Trading Bot Status</h3>
                     <div class="bot-controls">
@@ -306,9 +347,6 @@
         </div>
     </div>
 
-    <script src="jupiter.js"></script>
-    <script src="wallet.js"></script>
-    <script src="trading_bot.js"></script>
     <script>
         // Initialize global variables
         let walletConnected = false;
