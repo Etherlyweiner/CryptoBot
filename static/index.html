@@ -11,7 +11,10 @@
     <script src="https://cdn.jsdelivr.net/npm/@jup-ag/core@4.0.0-beta.18/dist/index.umd.js"></script>
     <script>
         // Initialize Jupiter API globally
-        window.JupiterApi = window.Jupiter;
+        window.JupiterApi = {
+            QuoteApi: Jupiter.QuoteApi,
+            SwapApi: Jupiter.SwapApi
+        };
     </script>
     <script src="wallet.js"></script>
     <script src="jupiter.js"></script>

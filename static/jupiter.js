@@ -19,17 +19,17 @@ class JupiterDEX {
             console.log('Initializing Jupiter DEX...');
             
             // Initialize Jupiter SDK
-            const jupiterQuoteApi = new JupiterApi.QuoteApi({
+            const quoteApi = new window.JupiterApi.QuoteApi({
                 cluster: 'mainnet-beta'
             });
 
-            const jupiterSwapApi = new JupiterApi.SwapApi({
+            const swapApi = new window.JupiterApi.SwapApi({
                 cluster: 'mainnet-beta'
             });
 
             this.jupiter = {
-                quoteApi: jupiterQuoteApi,
-                swapApi: jupiterSwapApi
+                quoteApi,
+                swapApi
             };
 
             this.initialized = true;
@@ -82,7 +82,7 @@ class JupiterDEX {
 
             const swapResponse = await this.jupiter.swapApi.postSwap({
                 route: quote.routeInfo,
-                userPublicKey: walletManager.provider.publicKey.toString(),
+                userPublicKey: window.walletManager.provider.publicKey.toString(),
                 wrapUnwrapSOL: true
             });
 
@@ -95,10 +95,10 @@ class JupiterDEX {
                 Buffer.from(swapResponse.data.swapTransaction, 'base64')
             );
 
-            const signature = await walletManager.provider.signAndSendTransaction(transaction);
+            const signature = await window.walletManager.provider.signAndSendTransaction(transaction);
             
             // Wait for confirmation
-            const confirmation = await walletManager.connection.confirmTransaction(signature);
+            const confirmation = await window.walletManager.connection.confirmTransaction(signature);
             
             if (confirmation.value.err) {
                 throw new Error('Transaction failed to confirm');
@@ -120,12 +120,12 @@ class JupiterDEX {
 
     async getTokenBalance(tokenMint) {
         try {
-            if (!walletManager.isConnected()) {
+            if (!window.walletManager.isConnected()) {
                 throw new Error('Wallet not connected');
             }
 
-            const tokenAccount = await walletManager.connection.getParsedTokenAccountsByOwner(
-                walletManager.provider.publicKey,
+            const tokenAccount = await window.walletManager.connection.getParsedTokenAccountsByOwner(
+                window.walletManager.provider.publicKey,
                 { mint: new solanaWeb3.PublicKey(tokenMint) }
             );
 
@@ -248,10 +248,10 @@ class JupiterDEX {
             
             // 4. Sign and execute
             const signedTx = await wallet.signTransaction(transaction);
-            const txid = await walletManager.connection.sendRawTransaction(signedTx.serialize());
+            const txid = await window.walletManager.connection.sendRawTransaction(signedTx.serialize());
             
             // 5. Wait for confirmation
-            const confirmation = await walletManager.connection.confirmTransaction(txid);
+            const confirmation = await window.walletManager.connection.confirmTransaction(txid);
             
             if (confirmation.value.err) {
                 throw new Error('Transaction failed: ' + JSON.stringify(confirmation.value.err));
