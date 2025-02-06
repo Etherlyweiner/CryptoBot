@@ -230,11 +230,10 @@
         <div class="wallet-info">
             <h3>Your Wallet</h3>
             <p>Username: <span class="username">etherlyweiner</span></p>
-            <p>Address:</p>
-            <div class="address">7YTZcHQGJuReSDrQVvPCAj8qyxPzaUexHdKcswrumoyc</div>
+            <p>Address: <span class="wallet-address"></span></p>
+            <p>Balance: <span class="wallet-balance">0 SOL</span></p>
+            <button onclick="connectWallet()" class="connect-button">Connect Wallet</button>
         </div>
-        
-        <button onclick="testWallet()">Connect Wallet</button>
         
         <div id="status" class="status" style="display: none;"></div>
         
@@ -318,6 +317,40 @@
     <script src="dexscreener.js"></script>
     <script src="trading_bot.js"></script>
     <script>
+        async function connectWallet() {
+            try {
+                const connectButton = document.querySelector('.connect-button');
+                connectButton.disabled = true;
+                connectButton.textContent = 'Connecting...';
+                
+                const walletInfo = await walletManager.connect();
+                
+                // Update UI with wallet info
+                document.querySelector('.wallet-address').textContent = walletInfo.publicKey;
+                document.querySelector('.wallet-balance').textContent = `${walletInfo.balance.toFixed(4)} SOL`;
+                connectButton.textContent = 'Connected';
+                
+                // Show trading panel
+                document.getElementById('tradingPanel').style.display = 'block';
+                
+            } catch (error) {
+                console.error('Failed to connect wallet:', error);
+                const connectButton = document.querySelector('.connect-button');
+                connectButton.disabled = false;
+                connectButton.textContent = 'Connect Wallet';
+                
+                // Show error to user
+                const statusDiv = document.getElementById('status');
+                statusDiv.style.display = 'block';
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = `
+                    <h3>❌ Connection Failed</h3>
+                    <p>${error.message}</p>
+                    <p>Please make sure Phantom wallet is installed and unlocked.</p>
+                `;
+            }
+        }
+        
         let jupiter;
         let dexscreener;
         let walletConnected = false;

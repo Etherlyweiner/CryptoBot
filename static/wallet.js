@@ -15,14 +15,21 @@ class WalletManager {
 
     async _init() {
         try {
+            console.log('Initializing WalletManager...');
             await this._detectWallet();
+            console.log('Wallet detected:', this.provider);
+            
             this.connection = new solanaWeb3.Connection(
                 'https://staked.helius-rpc.com?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c',
                 'confirmed'
             );
+            console.log('Solana connection established');
+            
             this.jupiter = new JupiterDEX();  
+            console.log('Jupiter DEX initialized');
+            
             this._setupListeners();
-            console.log('Wallet manager initialized');
+            console.log('Wallet manager initialized successfully');
         } catch (error) {
             console.error('Wallet initialization failed:', error);
             throw error;
@@ -32,19 +39,31 @@ class WalletManager {
     async _detectWallet(retries = 10) {
         return new Promise((resolve, reject) => {
             const check = (attempt = 0) => {
-                const provider = window.phantom?.solana || window.solana;
+                console.log(`Checking for Phantom wallet (attempt ${attempt + 1}/${retries})`);
+                
+                // Check for both window.solana and window.phantom
+                const provider = window?.phantom?.solana || window?.solana;
                 
                 if (provider) {
-                    console.log('Phantom provider found:', provider);
-                    this.provider = provider;
-                    resolve(provider);
-                } else if (attempt < retries) {
-                    console.log(`Attempt ${attempt + 1}: Waiting for Phantom...`);
-                    setTimeout(() => check(attempt + 1), 1000);
+                    if (provider.isPhantom) {
+                        console.log('Phantom wallet found:', provider);
+                        this.provider = provider;
+                        resolve(provider);
+                    } else {
+                        console.log('Found wallet provider but not Phantom:', provider);
+                        if (attempt < retries) {
+                            setTimeout(() => check(attempt + 1), 1000);
+                        } else {
+                            reject(new Error('Phantom wallet not found'));
+                        }
+                    }
                 } else {
-                    const error = new Error('Phantom wallet not detected. Please install Phantom extension.');
-                    console.error(error);
-                    reject(error);
+                    console.log('No wallet provider found yet');
+                    if (attempt < retries) {
+                        setTimeout(() => check(attempt + 1), 1000);
+                    } else {
+                        reject(new Error('No wallet provider found'));
+                    }
                 }
             };
             check();
@@ -52,22 +71,31 @@ class WalletManager {
     }
 
     _setupListeners() {
-        if (!this.provider) return;
+        if (!this.provider) {
+            console.error('Cannot setup listeners: provider not initialized');
+            return;
+        }
 
+        console.log('Setting up wallet listeners');
+        
         this.provider.on('connect', (...args) => {
-            console.log('Wallet connected:', ...args);
+            console.log('Wallet connected event:', args);
             this._connectHandlers.forEach(handler => handler(...args));
             this.updateBalance();
         });
 
         this.provider.on('disconnect', (...args) => {
-            console.log('Wallet disconnected:', ...args);
+            console.log('Wallet disconnected event:', args);
             this._disconnectHandlers.forEach(handler => handler(...args));
         });
 
-        this.provider.on('accountChanged', () => {
-            console.log('Account changed, updating balance');
-            this.updateBalance();
+        this.provider.on('accountChanged', (publicKey) => {
+            console.log('Wallet account changed:', publicKey);
+            if (publicKey) {
+                this._connectHandlers.forEach(handler => handler(publicKey));
+            } else {
+                this._disconnectHandlers.forEach(handler => handler());
+            }
         });
     }
 
@@ -85,23 +113,24 @@ class WalletManager {
 
     async connect() {
         try {
+            console.log('Attempting to connect wallet...');
             if (!this.provider) {
                 throw new Error('Wallet provider not initialized');
             }
 
-            if (this.provider.isConnected) {
+            if (this.isConnected()) {
                 console.log('Wallet already connected');
-                return this.getWalletInfo();
+                return await this.getWalletInfo();
             }
 
             console.log('Requesting wallet connection...');
-            const response = await this.provider.connect();
-            console.log('Connection response:', response);
-            
+            await this.provider.connect();
+            console.log('Wallet connected successfully');
+
             return await this.getWalletInfo();
         } catch (error) {
-            console.error('Connection failed:', error);
-            throw new Error(`Wallet connection failed: ${error.message}`);
+            console.error('Wallet connection failed:', error);
+            throw error;
         }
     }
 
@@ -117,19 +146,26 @@ class WalletManager {
 
     async getWalletInfo() {
         try {
-            if (!this.provider?.publicKey) {
+            if (!this.isConnected()) {
                 throw new Error('Wallet not connected');
             }
 
+            const publicKey = this.provider.publicKey.toString();
+            console.log('Getting wallet info for:', publicKey);
+
             const balance = await this.connection.getBalance(this.provider.publicKey);
-            const info = {
-                publicKey: this.provider.publicKey.toString(),
-                balance: balance / 1e9, // Convert lamports to SOL
+            const solBalance = balance / 1e9; // Convert lamports to SOL
+
+            console.log('Wallet info retrieved:', {
+                publicKey,
+                balance: solBalance
+            });
+
+            return {
+                publicKey,
+                balance: solBalance,
                 network: 'mainnet-beta'
             };
-
-            console.log('Wallet info:', info);
-            return info;
         } catch (error) {
             console.error('Failed to get wallet info:', error);
             throw error;
