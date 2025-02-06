@@ -311,24 +311,32 @@
     <script>
         // Initialize global variables
         let walletConnected = false;
-        let jupiter;
-        let priceUpdateInterval;
-        let tradingBot;
+        let jupiter = null;
+        let tradingBot = {
+            active: false,
+            positions: new Map(),
+            onStatusUpdate: null
+        };
 
         // Initialize status update handler
         function updateWalletStatus(status) {
             walletConnected = status === 'connected';
             const connectButton = document.getElementById('connectWallet');
             const walletStatus = document.getElementById('walletStatus');
+            const tradingPanel = document.getElementById('tradingPanel');
             
             if (walletConnected) {
-                connectButton.textContent = 'Disconnect';
+                connectButton.textContent = 'Connected';
+                connectButton.disabled = true;
                 walletStatus.textContent = 'Connected';
-                walletStatus.className = 'status-connected';
+                walletStatus.className = 'status success';
+                tradingPanel.style.display = 'block';
             } else {
                 connectButton.textContent = 'Connect Wallet';
-                walletStatus.textContent = 'Disconnected';
-                walletStatus.className = 'status-disconnected';
+                connectButton.disabled = false;
+                walletStatus.textContent = 'Not connected';
+                walletStatus.className = 'status';
+                tradingPanel.style.display = 'none';
             }
         }
         
@@ -339,11 +347,11 @@
                 if (window.walletManager) {
                     clearInterval(checkWalletManager);
                     window.walletManager.onStatusUpdate = updateWalletStatus;
-                    tradingBot = new TradingBot();
+                    updateWalletStatus(window.walletManager.isConnected() ? 'connected' : 'disconnected');
                 }
             }, 100);
         });
-        
+
         // Wallet connection handler
         async function connectWallet() {
             try {
@@ -352,16 +360,9 @@
                 connectButton.textContent = 'Connecting...';
                 
                 // Connect wallet
-                const walletInfo = await window.walletManager.connect();
+                await window.walletManager.connect();
                 
-                // Update UI with wallet info
-                document.querySelector('.wallet-address').textContent = walletInfo.publicKey;
-                document.querySelector('.wallet-balance').textContent = `${walletInfo.balance.toFixed(4)} SOL`;
-                
-                // Show trading panel
-                document.getElementById('tradingPanel').style.display = 'block';
-                
-                // Initialize Jupiter
+                // Initialize Jupiter if not already initialized
                 if (!jupiter) {
                     jupiter = new JupiterDEX();
                     await jupiter.initialize();
@@ -372,9 +373,6 @@
                 const connectButton = document.getElementById('connectWallet');
                 connectButton.disabled = false;
                 connectButton.textContent = 'Connect Wallet';
-                
-                document.getElementById('status').textContent = `Error: ${error.message}`;
-                document.getElementById('status').style.display = 'block';
             }
         }
 
