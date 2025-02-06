@@ -664,3 +664,128 @@ async function connectWallet() {
         }
     }
 }
+
+// Trading control event listeners
+document.getElementById('start-trading').addEventListener('click', async () => {
+    try {
+        // Validate settings before starting
+        const settings = validateSettings();
+        if (!settings) {
+            showError('Please check your trading settings');
+            return;
+        }
+
+        // Update UI
+        document.getElementById('start-trading').disabled = true;
+        document.getElementById('stop-trading').disabled = false;
+        document.getElementById('trading-status').textContent = 'Trading Status: Starting...';
+        
+        // Start the bot
+        await tradingBot.start();
+        
+        // Update status
+        document.getElementById('trading-status').textContent = 'Trading Status: Active';
+        showSuccess('Autonomous trading started successfully');
+        
+        // Disable settings while trading
+        disableSettings(true);
+        
+    } catch (error) {
+        console.error('Failed to start trading:', error);
+        showError('Failed to start trading: ' + error.message);
+        
+        // Reset UI
+        document.getElementById('start-trading').disabled = false;
+        document.getElementById('stop-trading').disabled = true;
+        document.getElementById('trading-status').textContent = 'Trading Status: Stopped';
+        disableSettings(false);
+    }
+});
+
+document.getElementById('stop-trading').addEventListener('click', () => {
+    try {
+        // Stop the bot
+        tradingBot.stop();
+        
+        // Update UI
+        document.getElementById('start-trading').disabled = false;
+        document.getElementById('stop-trading').disabled = true;
+        document.getElementById('trading-status').textContent = 'Trading Status: Stopped';
+        showSuccess('Trading stopped successfully');
+        
+        // Re-enable settings
+        disableSettings(false);
+        
+    } catch (error) {
+        console.error('Failed to stop trading:', error);
+        showError('Failed to stop trading: ' + error.message);
+    }
+});
+
+function validateSettings() {
+    // Get all settings
+    const settings = {
+        tradeSize: parseFloat(document.getElementById('trade-size').value),
+        maxSlippage: parseFloat(document.getElementById('max-slippage').value),
+        profitTarget: parseFloat(document.getElementById('profit-target').value),
+        stopLoss: parseFloat(document.getElementById('stop-loss').value),
+        autoTrading: {
+            enabled: document.getElementById('auto-trading-enabled').checked,
+            interval: parseInt(document.getElementById('trading-interval').value),
+            maxPositions: parseInt(document.getElementById('max-positions').value)
+        },
+        riskManagement: {
+            maxDailyLoss: parseFloat(document.getElementById('max-daily-loss').value),
+            maxPositionSize: parseFloat(document.getElementById('max-position-size').value),
+            minLiquidity: parseFloat(document.getElementById('min-liquidity').value),
+            minVolume: parseFloat(document.getElementById('min-volume').value),
+            maxSlippageImpact: parseFloat(document.getElementById('max-slippage-impact').value),
+            cooldownPeriod: parseInt(document.getElementById('cooldown-period').value)
+        }
+    };
+
+    // Validate all settings are numbers and within reasonable ranges
+    if (isNaN(settings.tradeSize) || settings.tradeSize <= 0) return false;
+    if (isNaN(settings.maxSlippage) || settings.maxSlippage <= 0 || settings.maxSlippage > 100) return false;
+    if (isNaN(settings.profitTarget) || settings.profitTarget <= 0) return false;
+    if (isNaN(settings.stopLoss) || settings.stopLoss <= 0) return false;
+    if (isNaN(settings.autoTrading.interval) || settings.autoTrading.interval < 1) return false;
+    if (isNaN(settings.autoTrading.maxPositions) || settings.autoTrading.maxPositions < 1) return false;
+    
+    // Validate risk management settings
+    const rm = settings.riskManagement;
+    if (isNaN(rm.maxDailyLoss) || rm.maxDailyLoss <= 0 || rm.maxDailyLoss > 100) return false;
+    if (isNaN(rm.maxPositionSize) || rm.maxPositionSize <= 0) return false;
+    if (isNaN(rm.minLiquidity) || rm.minLiquidity <= 0) return false;
+    if (isNaN(rm.minVolume) || rm.minVolume <= 0) return false;
+    if (isNaN(rm.maxSlippageImpact) || rm.maxSlippageImpact <= 0 || rm.maxSlippageImpact > 100) return false;
+    if (isNaN(rm.cooldownPeriod) || rm.cooldownPeriod < 0) return false;
+
+    return settings;
+}
+
+function disableSettings(disabled) {
+    // Disable/enable all input fields while trading
+    const inputs = document.querySelectorAll('.settings-group input');
+    inputs.forEach(input => {
+        input.disabled = disabled;
+    });
+}
+
+function showSuccess(message) {
+    const statusElement = document.getElementById('status-message');
+    if (statusElement) {
+        statusElement.textContent = message;
+        statusElement.className = 'success';
+        statusElement.setAttribute('aria-live', 'polite');
+    }
+}
+
+function showError(message) {
+    const statusElement = document.getElementById('status-message');
+    if (statusElement) {
+        statusElement.textContent = message;
+        statusElement.className = 'error';
+        statusElement.setAttribute('aria-live', 'assertive');
+    }
+}

@@ -75,6 +75,18 @@
                         <input type="number" id="max-positions" min="1" max="10" step="1" value="3" 
                                aria-describedby="max-positions-description">
                         <div id="max-positions-description" class="sr-only">Enter maximum number of concurrent positions between 1 and 10</div>
+
+                        <div class="trading-controls">
+                            <button id="start-trading" class="primary-button" aria-label="Start autonomous trading">
+                                Start Trading
+                            </button>
+                            <button id="stop-trading" class="danger-button" aria-label="Stop autonomous trading" disabled>
+                                Stop Trading
+                            </button>
+                            <div id="trading-status" class="status-indicator" role="status" aria-live="polite">
+                                Trading Status: Stopped
+                            </div>
+                        </div>
                     </div>
                 </div>
 

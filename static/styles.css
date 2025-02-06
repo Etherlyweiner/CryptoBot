@@ -416,6 +416,83 @@ input[type="number"]::-webkit-outer-spin-button {
     color: var(--text-primary);
 }
 
+/* Trading controls */
+.trading-controls {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 0.5rem;
+}
+
+.primary-button {
+    padding: 0.75rem 1.5rem;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 0.25rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.primary-button:hover {
+    background: #45a049;
+}
+
+.primary-button:disabled {
+    background: #cccccc;
+    cursor: not-allowed;
+}
+
+.danger-button {
+    padding: 0.75rem 1.5rem;
+    background: #f44336;
+    color: white;
+    border: none;
+    border-radius: 0.25rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.danger-button:hover {
+    background: #da190b;
+}
+
+.danger-button:disabled {
+    background: #cccccc;
+    cursor: not-allowed;
+}
+
+.status-indicator {
+    margin-left: auto;
+    padding: 0.5rem 1rem;
+    background: var(--bg-input);
+    border-radius: 0.25rem;
+    font-weight: 500;
+}
+
+/* High contrast mode support for trading controls */
+@media (forced-colors: active) {
+    .primary-button,
+    .danger-button {
+        border: 2px solid ButtonText;
+    }
+
+    .primary-button:disabled,
+    .danger-button:disabled {
+        border: 2px solid GrayText;
+    }
+
+    .status-indicator {
+        border: 1px solid ButtonText;
+    }
+}
+
 /* High contrast mode support */
 @media (forced-colors: active) {
     .settings-group {
