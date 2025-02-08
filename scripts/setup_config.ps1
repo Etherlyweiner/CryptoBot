@@ -12,11 +12,11 @@ function Get-UserInput {
     )
     
     Write-Host $prompt -ForegroundColor Cyan -NoNewline
-    $userInput = Read-Host
-    if ([string]::IsNullOrWhiteSpace($userInput) -and $default) {
+    $response = Read-Host
+    if ([string]::IsNullOrWhiteSpace($response) -and $default) {
         return $default
     }
-    return $userInput
+    return $response
 }
 
 # Get configuration values

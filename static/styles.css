@@ -19,9 +19,20 @@
 }
 
 html {
-    font-size: 16px;
-    /* Use font-size-adjust instead of text-size-adjust for better browser support */
-    font-size-adjust: 100%;
+    font-size: calc(14px + 0.390625vw);
+    -webkit-text-size-adjust: none; /* Prevent iOS font scaling */
+}
+
+@media screen and (max-width: 768px) {
+    html {
+        font-size: calc(13px + 0.390625vw);
+    }
+}
+
+@media screen and (min-width: 1920px) {
+    html {
+        font-size: 18px;
+    }
 }
 
 body {
@@ -604,7 +615,6 @@ select:focus {
 
 /* Base text adjustments */
 html {
-    font-size: 16px;
     line-height: 1.5;
 }
 
