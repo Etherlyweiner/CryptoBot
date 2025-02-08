@@ -5,6 +5,7 @@ A sophisticated cryptocurrency trading bot focused on conservative trading strat
 ## Features
 
 ### Conservative Trading Strategy
+
 - Dynamic position sizing based on market conditions
 - Advanced risk management with multiple safety checks
 - Support/resistance level detection
@@ -12,6 +13,7 @@ A sophisticated cryptocurrency trading bot focused on conservative trading strat
 - Market volatility monitoring
 
 ### Risk Management
+
 - Maximum drawdown protection
 - Position size limits
 - Total exposure control
@@ -20,6 +22,7 @@ A sophisticated cryptocurrency trading bot focused on conservative trading strat
 - Daily trade limits
 
 ### Real-time Monitoring
+
 - Performance dashboard
 - Risk metrics visualization
 - Trading activity tracking
@@ -27,6 +30,7 @@ A sophisticated cryptocurrency trading bot focused on conservative trading strat
 - Alert system
 
 ### Technical Features
+
 - Prometheus metrics integration
 - Advanced error handling and logging
 - Secure credential storage
@@ -36,74 +40,90 @@ A sophisticated cryptocurrency trading bot focused on conservative trading strat
 ## Installation
 
 ### Prerequisites
+
 - Python 3.10
 - Git
 - Phantom Wallet
 - Solana CLI (optional)
 
 ### Quick Start
+
 1. Clone the repository:
-```bash
-git clone https://github.com/Etherlyweiner/CryptoBot.git
-cd CryptoBot
-```
+
+   ```bash
+   git clone https://github.com/Etherlyweiner/CryptoBot.git
+   cd CryptoBot
+   ```
 
 2. Create and activate a virtual environment:
-```bash
-# Windows
-python -m venv .venv
-.venv\Scripts\activate
 
-# Linux/Mac
-python -m venv .venv
-source .venv/bin/activate
-```
+   ```bash
+   # Windows
+   python -m venv .venv
+   .venv\Scripts\activate
+
+   # Linux/Mac
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
 
 3. Install dependencies:
-```bash
-pip install -e .
-```
+
+   ```bash
+   pip install -e .
+   ```
 
 4. Configure your environment:
-```bash
-cp config/env_template.txt .env
-# Edit .env with your settings
-```
+
+   ```bash
+   cp config/env_template.txt .env
+   # Edit .env with your settings
+   ```
 
 5. Start the bot:
-```bash
-streamlit run src/cryptobot/app.py
-```
+
+   ```bash
+   streamlit run src/cryptobot/app.py
+   ```
 
 ## Quick Start
 
 ### First-Time Setup
+
 1. Install Redis for Windows (if not already installed)
 2. Install Node.js (if not already installed)
 3. Run the following command to create a desktop shortcut:
+
    ```powershell
    powershell -ExecutionPolicy Bypass -File create_shortcut.ps1
    ```
 
 ### Starting the Bot
+
 1. **Using the Desktop Shortcut**
+
    - Double-click the "CryptoBot Dashboard" shortcut on your desktop
    - The dashboard will open automatically in your default browser
    - All components (Redis, Trading Bot, Dashboard) will start automatically
 
 2. **Manual Start**
+
    - Run `start_all.bat` from the project directory
    - The dashboard will open automatically at http://localhost:8000
 
 ### Components
+
 The startup script ensures all components start in the correct order:
+
 1. Redis server (if not running)
 2. Node.js dashboard server
 3. Python trading bot
 4. Web browser with dashboard
 
 ### Troubleshooting
+
 If you encounter any issues:
+
 1. Ensure Redis is installed and running (`net start Redis` as Administrator)
 2. Verify Node.js is installed (`node --version`)
 3. Check the logs in the `logs` directory for detailed error messages
@@ -111,13 +131,16 @@ If you encounter any issues:
 ## Configuration
 
 ### Environment Variables
+
 - `SOLANA_NETWORK`: Network to connect to (mainnet-beta/devnet)
 - `SOLANA_RPC_URL`: Your Solana RPC URL
 - `PHANTOM_WALLET_ADDRESS`: Your Phantom wallet address
 - `SOLSCAN_API_KEY`: Your Solscan API key
 
 ### Trading Parameters
+
 Edit `config/trading.json`:
+
 ```json
 {
     "POSITION_SIZE_SOL": 0.1,
@@ -130,7 +153,9 @@ Edit `config/trading.json`:
 ```
 
 ### Network Configuration
+
 Edit `config/network.json`:
+
 ```json
 {
     "SOLANA_NETWORK": "mainnet-beta",
@@ -145,21 +170,26 @@ Edit `config/network.json`:
 ## Usage
 
 ### Starting the Bot
+
 1. Ensure your Phantom wallet is connected
 2. Start the Streamlit dashboard:
-```bash
-streamlit run src/cryptobot/app.py
-```
+
+   ```bash
+   streamlit run src/cryptobot/app.py
+   ```
+
 3. Navigate to the dashboard (default: http://localhost:8501)
 4. Configure your trading parameters
 5. Start trading!
 
 ### Monitoring
+
 - View real-time metrics at http://localhost:8501
 - Check logs in the `logs` directory
 - Monitor Prometheus metrics at http://localhost:9090
 
 ### Backup and Recovery
+
 - Daily log rotation
 - Automatic state backup
 - Transaction history export
@@ -167,11 +197,13 @@ streamlit run src/cryptobot/app.py
 ## Development
 
 ### Running Tests
+
 ```bash
 pytest tests/
 ```
 
 ### Code Style
+
 ```bash
 # Format code
 black src/
@@ -184,6 +216,7 @@ flake8 src/
 ```
 
 ### Building Documentation
+
 ```bash
 cd docs/
 make html
