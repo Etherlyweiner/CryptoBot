@@ -309,17 +309,29 @@ html {
 @media (max-width: 768px) {
     * {
         -ms-overflow-style: -ms-autohiding-scrollbar;
-    }
-    ::-webkit-scrollbar {
-        display: none;
+        scrollbar-width: none; /* Firefox */
     }
     
-    /* Alternative approach for hiding scrollbars while maintaining functionality */
+    ::-webkit-scrollbar {
+        display: none; /* Chrome, Safari, Edge */
+    }
+    
     .scroll-container {
         overflow-y: auto;
-        -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
-        margin-right: -16px; /* Hide scrollbar by shifting content */
+        /* Use momentum scrolling for iOS < 16 */
+        scroll-behavior: smooth;
+        /* Prevent scroll chaining on iOS */
+        position: relative;
+        touch-action: pan-y pinch-zoom;
+        margin-right: -16px;
         padding-right: 16px;
+    }
+    
+    /* Add support for iOS 16+ */
+    @supports (overscroll-behavior: contain) {
+        .scroll-container {
+            overscroll-behavior: contain;
+        }
     }
 }
 
@@ -661,22 +673,4 @@ html {
     line-clamp: 2;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-/* Mobile styles */
-@media (max-width: 768px) {
-    * {
-        -ms-overflow-style: -ms-autohiding-scrollbar;
-    }
-    ::-webkit-scrollbar {
-        display: none;
-    }
-    
-    .scroll-container {
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        margin-right: -16px;
-        padding-right: 16px;
-        -webkit-overflow-scrolling: touch; /* For older iOS */
-    }
 }
