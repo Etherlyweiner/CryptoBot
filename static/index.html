@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <title>Solana Trading Bot</title>
@@ -10,16 +10,50 @@
     <!-- Load Solana Web3.js -->
     <script 
         src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.iife.min.js"
-        integrity="sha384-2qWPg3/5qW7SiGRYJEqeKz1RyWXUTYfNzJFmBUGPj6qZgfT9gHhbzQn7LAcHyTh"
         crossorigin="anonymous">
     </script>
 
     <!-- Load Jupiter SDK -->
     <script 
         src="https://unpkg.com/@jup-ag/core@4.0.0-beta.18/dist/index.umd.js"
-        integrity="sha384-jLHVlVvhpkQyUMVqNRJxvPJN5FLmAY/ROXxpHpkGQHXkxBQvOJELFGvP8cWvS0d"
         crossorigin="anonymous">
     </script>
+
+    <!-- Initialize global namespace -->
+    <script>
+        window.CryptoBot = {
+            dependencies: {
+                solanaWeb3: false,
+                jupiterAg: false
+            }
+        };
+
+        // Monitor dependencies
+        const checkDependencies = () => {
+            if (window.solanaWeb3) {
+                window.CryptoBot.dependencies.solanaWeb3 = true;
+                console.log('Solana Web3 loaded');
+            }
+            if (window.JupiterAg) {
+                window.CryptoBot.dependencies.jupiterAg = true;
+                console.log('Jupiter SDK loaded');
+            }
+        };
+
+        // Check dependencies every 100ms
+        const dependencyInterval = setInterval(() => {
+            checkDependencies();
+            if (window.CryptoBot.dependencies.solanaWeb3 && 
+                window.CryptoBot.dependencies.jupiterAg) {
+                clearInterval(dependencyInterval);
+                console.log('All dependencies loaded');
+            }
+        }, 100);
+    </script>
+
+    <!-- Load our trading bot code -->
+    <script src="jupiter.js"></script>
+    <script src="app.js"></script>
 </head>
 <body>
     <div class="container">
@@ -93,30 +127,5 @@
             <div id="dependencies-status"></div>
         </main>
     </div>
-
-    <!-- Load Scripts -->
-    <script>
-        // Initialize global namespace
-        window.CryptoBot = {
-            dependencies: {
-                solanaWeb3: false,
-                jupiter: false
-            }
-        };
-
-        // Monitor dependency loading
-        function checkDependencies() {
-            const deps = window.CryptoBot.dependencies;
-            deps.solanaWeb3 = typeof window.solanaWeb3 !== 'undefined';
-            deps.jupiter = typeof window.Jupiter !== 'undefined';
-            document.getElementById('dependencies-status').textContent = 
-                `Dependencies status: ${JSON.stringify(deps)}`;
-        }
-
-        // Check dependencies periodically
-        setInterval(checkDependencies, 1000);
-    </script>
-    <script defer src="jupiter.js"></script>
-    <script defer src="app.js"></script>
 </body>
 </html>

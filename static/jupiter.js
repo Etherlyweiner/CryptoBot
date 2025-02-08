@@ -5,22 +5,35 @@ class JupiterDEX {
         this.initialized = false;
         this.connection = null;
         this.jupiter = null;
+        this.initPromise = null;
     }
 
     async waitForDependencies() {
-        const maxAttempts = 20;
+        const maxAttempts = 30; // Increased from 20
         const waitTime = 500;
         let attempts = 0;
 
+        // First wait for CryptoBot namespace
+        while (!window.CryptoBot && attempts < 10) {
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            attempts++;
+        }
+
+        if (!window.CryptoBot) {
+            throw new Error('CryptoBot namespace not initialized');
+        }
+
+        attempts = 0;
         while (attempts < maxAttempts) {
-            if (window.solanaWeb3 && window.JupiterAg) {
+            const deps = window.CryptoBot.dependencies;
+            if (deps.solanaWeb3 && deps.jupiterAg) {
                 console.log('All dependencies loaded successfully');
                 return true;
             }
 
-            // Log which dependencies are missing
-            if (!window.solanaWeb3) console.log('Waiting for Solana Web3...');
-            if (!window.JupiterAg) console.log('Waiting for Jupiter SDK...');
+            // Log missing dependencies
+            if (!deps.solanaWeb3) console.log('Waiting for Solana Web3...');
+            if (!deps.jupiterAg) console.log('Waiting for Jupiter SDK...');
             
             await new Promise(resolve => setTimeout(resolve, waitTime));
             attempts++;
@@ -28,55 +41,69 @@ class JupiterDEX {
         }
 
         const missing = [];
-        if (!window.solanaWeb3) missing.push('Solana Web3');
-        if (!window.JupiterAg) missing.push('Jupiter SDK');
+        const deps = window.CryptoBot.dependencies;
+        if (!deps.solanaWeb3) missing.push('Solana Web3');
+        if (!deps.jupiterAg) missing.push('Jupiter SDK');
         
         throw new Error(`Failed to load dependencies: ${missing.join(', ')}`);
     }
 
     async initialize() {
-        try {
-            console.log('Initializing Jupiter DEX...');
-            
-            await this.waitForDependencies();
-
-            // Initialize Jupiter connection with fallback endpoints
-            const endpoints = [
-                'https://api.mainnet-beta.solana.com',
-                'https://solana-mainnet.rpc.extrnode.com',
-                'https://api.metaplex.solana.com'
-            ];
-
-            // Try each endpoint until one works
-            for (const endpoint of endpoints) {
-                try {
-                    this.connection = new window.solanaWeb3.Connection(endpoint);
-                    await this.connection.getVersion();
-                    console.log(`Connected to Solana endpoint: ${endpoint}`);
-                    break;
-                } catch (error) {
-                    console.warn(`Failed to connect to ${endpoint}, trying next endpoint...`);
-                }
-            }
-
-            if (!this.connection) {
-                throw new Error('Failed to connect to any Solana endpoint');
-            }
-
-            // Initialize Jupiter with the latest SDK version
-            this.jupiter = await window.JupiterAg.Jupiter.load({
-                connection: this.connection,
-                cluster: 'mainnet-beta',
-                env: 'mainnet-beta',
-                defaultSlippageBps: 100 // 1%
-            });
-
-            this.initialized = true;
-            console.log('Jupiter DEX initialized successfully');
-        } catch (error) {
-            console.error('Failed to initialize Jupiter:', error);
-            throw error;
+        // Only initialize once
+        if (this.initPromise) {
+            return this.initPromise;
         }
+
+        this.initPromise = (async () => {
+            try {
+                console.log('Initializing Jupiter DEX...');
+                
+                await this.waitForDependencies();
+
+                // Initialize Jupiter connection with fallback endpoints
+                const endpoints = [
+                    'https://api.mainnet-beta.solana.com',
+                    'https://solana-mainnet.rpc.extrnode.com',
+                    'https://api.metaplex.solana.com'
+                ];
+
+                // Try each endpoint until one works
+                let connected = false;
+                for (const endpoint of endpoints) {
+                    try {
+                        this.connection = new window.solanaWeb3.Connection(endpoint);
+                        await this.connection.getVersion();
+                        console.log(`Connected to Solana endpoint: ${endpoint}`);
+                        connected = true;
+                        break;
+                    } catch (error) {
+                        console.warn(`Failed to connect to ${endpoint}, trying next endpoint...`);
+                    }
+                }
+
+                if (!connected) {
+                    throw new Error('Failed to connect to any Solana endpoint');
+                }
+
+                // Initialize Jupiter with the latest SDK version
+                this.jupiter = await window.JupiterAg.Jupiter.load({
+                    connection: this.connection,
+                    cluster: 'mainnet-beta',
+                    env: 'mainnet-beta',
+                    defaultSlippageBps: 100 // 1%
+                });
+
+                this.initialized = true;
+                console.log('Jupiter DEX initialized successfully');
+                return true;
+            } catch (error) {
+                console.error('Failed to initialize Jupiter:', error);
+                this.initPromise = null; // Allow retry on failure
+                throw error;
+            }
+        })();
+
+        return this.initPromise;
     }
 
     async getQuote(inputMint, outputMint, amount, slippage = 1) {
