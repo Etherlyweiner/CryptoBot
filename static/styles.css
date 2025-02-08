@@ -325,17 +325,17 @@ html {
 
 /* User selection styles */
 .no-select {
+    user-select: none;
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
-    user-select: none;
 }
 
 .allow-select {
+    user-select: text;
     -webkit-user-select: text;
     -moz-user-select: text;
     -ms-user-select: text;
-    user-select: text;
 }
 
 /* Performance optimizations */
@@ -780,5 +780,32 @@ html {
         -webkit-box-orient: vertical;
         -webkit-box-direction: normal;
         flex-direction: column;
+    }
+}
+
+/* Text truncation with ellipsis */
+.truncate {
+    display: block;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Mobile styles */
+@media (max-width: 768px) {
+    * {
+        -ms-overflow-style: -ms-autohiding-scrollbar;
+    }
+    ::-webkit-scrollbar {
+        display: none;
+    }
+    
+    .scroll-container {
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        margin-right: -16px;
+        padding-right: 16px;
     }
 }
