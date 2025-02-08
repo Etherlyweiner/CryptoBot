@@ -22,14 +22,27 @@ html {
     /* Base font size */
     font-size: 16px;
     
-    /* Responsive font sizing using clamp for better browser support */
+    /* Use clamp for responsive font sizing */
     font-size: clamp(14px, calc(14px + 0.390625vw), 18px);
     
-    /* Prevent automatic text size adjustment */
+    /* Prevent iOS font scaling while maintaining accessibility */
     -webkit-text-size-adjust: 100%;
-    -moz-text-size-adjust: 100%;
-    -ms-text-size-adjust: 100%;
-    text-size-adjust: 100%;
+}
+
+/* Ensure proper font sizing on Firefox */
+@-moz-document url-prefix() {
+    html {
+        font-size: clamp(14px, calc(14px + 0.390625vw), 18px);
+    }
+}
+
+/* Ensure proper font sizing on Safari */
+@media not all and (min-resolution:.001dpcm) { 
+    @supports (-webkit-appearance:none) {
+        html {
+            font-size: clamp(14px, calc(14px + 0.390625vw), 18px);
+        }
+    }
 }
 
 body {
