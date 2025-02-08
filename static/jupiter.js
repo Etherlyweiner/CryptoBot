@@ -15,7 +15,7 @@ class JupiterDEX {
         while (attempts < maxAttempts) {
             // Check if dependencies are loaded
             const solanaLoaded = typeof window.solanaWeb3 !== 'undefined';
-            const jupiterLoaded = typeof window.JupiterCore !== 'undefined' && typeof window.JupiterCore.Jupiter !== 'undefined';
+            const jupiterLoaded = typeof window.Jupiter !== 'undefined';
             
             if (solanaLoaded && jupiterLoaded) {
                 console.log('All dependencies loaded successfully');
@@ -34,7 +34,7 @@ class JupiterDEX {
         // If we get here, something didn't load
         const missing = [];
         if (typeof window.solanaWeb3 === 'undefined') missing.push('Solana Web3');
-        if (typeof window.JupiterCore === 'undefined' || typeof window.JupiterCore.Jupiter === 'undefined') missing.push('Jupiter SDK');
+        if (typeof window.Jupiter === 'undefined') missing.push('Jupiter SDK');
         
         throw new Error(`Failed to load dependencies: ${missing.join(', ')}`);
     }
@@ -70,7 +70,7 @@ class JupiterDEX {
             }
 
             // Initialize Jupiter with the latest SDK version
-            this.jupiter = await window.JupiterCore.Jupiter.load({
+            this.jupiter = await window.Jupiter.load({
                 connection: this.connection,
                 cluster: 'mainnet-beta',
                 env: 'mainnet-beta'
@@ -153,10 +153,4 @@ class JupiterDEX {
 }
 
 // Initialize and export Jupiter instance
-if (typeof exports !== 'undefined') {
-    module.exports = JupiterDEX;
-} else if (typeof window !== 'undefined') {
-    window.JupiterDEX = JupiterDEX;
-} else if (typeof global !== 'undefined') {
-    global.JupiterDEX = JupiterDEX;
-}
+window.jupiter = new JupiterDEX();
