@@ -305,29 +305,33 @@ html {
     scroll-behavior: smooth;
 }
 
-/* Hide scrollbar for mobile devices while keeping functionality */
+/* Mobile styles */
 @media (max-width: 768px) {
     * {
         -ms-overflow-style: -ms-autohiding-scrollbar;
-        scrollbar-width: none; /* Firefox */
     }
     
-    ::-webkit-scrollbar {
+    /* Hide scrollbars while keeping functionality */
+    .scroll-container::-webkit-scrollbar,
+    .scroll-container * ::-webkit-scrollbar {
         display: none; /* Chrome, Safari, Edge */
+        width: 0;
+        background: transparent;
     }
     
     .scroll-container {
         overflow-y: auto;
-        /* Use momentum scrolling for iOS < 16 */
+        /* Use smooth scrolling */
         scroll-behavior: smooth;
-        /* Prevent scroll chaining on iOS */
+        /* Prevent scroll chaining */
         position: relative;
         touch-action: pan-y pinch-zoom;
+        /* Hide scrollbar by shifting content */
         margin-right: -16px;
         padding-right: 16px;
     }
     
-    /* Add support for iOS 16+ */
+    /* Add support for modern browsers */
     @supports (overscroll-behavior: contain) {
         .scroll-container {
             overscroll-behavior: contain;
