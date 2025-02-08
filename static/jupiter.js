@@ -13,28 +13,23 @@ class JupiterDEX {
         let attempts = 0;
 
         while (attempts < maxAttempts) {
-            // Check if dependencies are loaded
-            const solanaLoaded = typeof window.solanaWeb3 !== 'undefined';
-            const jupiterLoaded = typeof window.Jupiter !== 'undefined';
-            
-            if (solanaLoaded && jupiterLoaded) {
+            if (window.solanaWeb3 && window.JupiterAg) {
                 console.log('All dependencies loaded successfully');
                 return true;
             }
 
             // Log which dependencies are missing
-            if (!solanaLoaded) console.log('Waiting for Solana Web3...');
-            if (!jupiterLoaded) console.log('Waiting for Jupiter SDK...');
+            if (!window.solanaWeb3) console.log('Waiting for Solana Web3...');
+            if (!window.JupiterAg) console.log('Waiting for Jupiter SDK...');
             
             await new Promise(resolve => setTimeout(resolve, waitTime));
             attempts++;
             console.log(`Dependency check attempt ${attempts}/${maxAttempts}`);
         }
 
-        // If we get here, something didn't load
         const missing = [];
-        if (typeof window.solanaWeb3 === 'undefined') missing.push('Solana Web3');
-        if (typeof window.Jupiter === 'undefined') missing.push('Jupiter SDK');
+        if (!window.solanaWeb3) missing.push('Solana Web3');
+        if (!window.JupiterAg) missing.push('Jupiter SDK');
         
         throw new Error(`Failed to load dependencies: ${missing.join(', ')}`);
     }
@@ -43,7 +38,6 @@ class JupiterDEX {
         try {
             console.log('Initializing Jupiter DEX...');
             
-            // Wait for dependencies with detailed error reporting
             await this.waitForDependencies();
 
             // Initialize Jupiter connection with fallback endpoints
@@ -70,8 +64,7 @@ class JupiterDEX {
             }
 
             // Initialize Jupiter with the latest SDK version
-            const { Jupiter } = window;
-            this.jupiter = await Jupiter.load({
+            this.jupiter = await window.JupiterAg.Jupiter.load({
                 connection: this.connection,
                 cluster: 'mainnet-beta',
                 env: 'mainnet-beta',

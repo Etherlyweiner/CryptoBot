@@ -6,6 +6,20 @@
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <title>Solana Trading Bot</title>
     <link rel="stylesheet" href="styles.css">
+    
+    <!-- Load Solana Web3.js -->
+    <script 
+        src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.iife.min.js"
+        integrity="sha384-2qWPg3/5qW7SiGRYJEqeKz1RyWXUTYfNzJFmBUGPj6qZgfT9gHhbzQn7LAcHyTh"
+        crossorigin="anonymous">
+    </script>
+
+    <!-- Load Jupiter SDK -->
+    <script 
+        src="https://unpkg.com/@jup-ag/core@4.0.0-beta.18/dist/index.umd.js"
+        integrity="sha384-jLHVlVvhpkQyUMVqNRJxvPJN5FLmAY/ROXxpHpkGQHXkxBQvOJELFGvP8cWvS0d"
+        crossorigin="anonymous">
+    </script>
 </head>
 <body>
     <div class="container">
@@ -81,8 +95,6 @@
     </div>
 
     <!-- Load Scripts -->
-    <script src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.iife.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@jup-ag/core@4.0.0-beta.18/dist/index.iife.js" integrity="sha384-K0UXWwFB3vDZ0aCZ5lKF3BgBgp9DJo5fAEAGPYX1wC5zjGbY6LDhFBpWZ1q4Uf6" crossorigin="anonymous"></script>
     <script>
         // Initialize global namespace
         window.CryptoBot = {
