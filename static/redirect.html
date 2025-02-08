@@ -1,13 +1,18 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Redirecting to HTTPS...</title>
-    <script>
-        // Redirect to Phantom's official demo page for testing
-        window.location.href = 'https://phantom.app/sandbox';
-    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CryptoBot - Redirecting...</title>
 </head>
 <body>
-    <p>Redirecting to secure connection...</p>
+    <div>Redirecting to wallet connection...</div>
+    <script>
+        // Handle redirect back from wallet connection
+        window.onload = function() {
+            window.opener.postMessage({ type: 'WALLET_CONNECTED' }, '*');
+            window.close();
+        };
+    </script>
 </body>
 </html>

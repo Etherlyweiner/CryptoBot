@@ -1,398 +1,223 @@
-/* CSS Custom Properties */
+/* Global styles */
 :root {
     --primary-color: #4CAF50;
-    --danger-color: #f44336;
-    --background-color: #1a1a1a;
-    --text-color: #ffffff;
-    --border-color: #333333;
-    --success-color: #4CAF50;
+    --secondary-color: #2196F3;
     --error-color: #f44336;
-    --card-background: white;
-    --border-radius: 8px;
-    --spacing: 20px;
-    --focus-outline: 3px solid #2196F3;
-    --bg-secondary: #f0f0f0;
-    --bg-input: #fff;
-    --text-primary: #333;
-    --bg-panel: #fff;
+    --success-color: #4CAF50;
+    --warning-color: #ff9800;
+    --text-color: #333;
+    --background-color: #f5f5f5;
+    --panel-background: #ffffff;
+    --border-color: #ddd;
 }
 
-/* Reset and base styles */
+/* Base styles */
 * {
-    -webkit-box-sizing: border-box;
-    -moz-box-sizing: border-box;
     box-sizing: border-box;
     margin: 0;
     padding: 0;
 }
 
-/* Cross-browser compatibility */
-* {
-    -webkit-box-sizing: border-box;
-    box-sizing: border-box;
-    -moz-tab-size: 4;
-    tab-size: 4;
-}
-
-/* Base text adjustments */
 html {
+    font-size: 16px;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    font-size: 16px;
-    line-height: 1.5;
-}
-
-/* Base styles */
-html {
-    /* Modern approach for text sizing */
-    font-size: 16px;
-    line-height: 1.5;
-    
-    /* Use viewport units for responsive font sizing */
-    font-size: clamp(14px, calc(14px + 0.390625vw), 18px);
-    
-    /* Tab size consistency */
-    -moz-tab-size: 4;
-    -o-tab-size: 4;
-    tab-size: 4;
-    
-    -webkit-text-size-adjust: 100%;
-    -moz-text-size-adjust: 100%;
-    text-size-adjust: 100%;
-}
-
-/* Ensure proper text sizing on different devices */
-@media screen and (max-width: 768px) {
-    html {
-        /* Responsive font size with clamp for better control */
-        font-size: clamp(13px, calc(13px + 0.390625vw), 16px);
-    }
-}
-
-/* Prevent text size adjustment on orientation change */
-@media screen and (orientation: landscape) {
-    html {
-        text-size-adjust: 100%;
-    }
-}
-
-@media screen and (min-width: 1920px) {
-    html {
-        /* Cap the maximum font size */
-        font-size: 18px;
-    }
 }
 
 body {
-    font-family: Arial, sans-serif;
-    line-height: 1.5;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
     color: var(--text-color);
     background-color: var(--background-color);
-    padding: var(--spacing);
-    min-height: 100vh;
+    margin: 0;
+    padding: 20px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    text-rendering: optimizeLegibility;
 }
 
-/* Accessibility improvements */
-:focus {
-    outline: var(--focus-outline);
-    outline-offset: 2px;
-}
-
-:focus:not(:focus-visible) {
-    outline: none;
-}
-
-/* Skip to main content link */
-.skip-link {
-    position: absolute;
-    top: -40px;
-    left: 0;
-    background: var(--primary-color);
-    color: white;
-    padding: 8px;
-    z-index: 100;
-    -webkit-transition: top 0.2s;
-    -moz-transition: top 0.2s;
-    transition: top 0.2s;
-}
-
-.skip-link:focus {
-    top: 0;
-}
-
-/* Container */
-.container {
-    max-width: 1200px;
-    margin: 0 auto;
-    background-color: var(--card-background);
-    padding: var(--spacing);
-    border-radius: var(--border-radius);
-    -webkit-box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-/* Header styles */
-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-}
-
-h1 {
-    margin: 0;
-    font-size: 24px;
-}
-
-/* Button styles */
-button {
-    padding: 10px 20px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: background-color 0.3s;
-}
-
-button.primary-button {
-    background-color: var(--primary-color);
-    color: white;
-}
-
-button.danger-button {
-    background-color: var(--danger-color);
-    color: white;
-}
-
-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-/* Panel styles */
-.panel {
-    background-color: #242424;
+/* Trading panel */
+.trading-panel {
+    background: var(--panel-background);
     border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     padding: 20px;
     margin-bottom: 20px;
-    display: none;
-    opacity: 0;
-    -webkit-transform: translateY(-10px);
-    transform: translateY(-10px);
-    -webkit-transition: opacity 0.3s ease-out, transform 0.3s ease-out;
-    transition: opacity 0.3s ease-out, transform 0.3s ease-out;
-}
-
-.panel[aria-expanded="true"] {
-    display: block;
+    transition: transform 0.3s ease, opacity 0.3s ease;
     opacity: 1;
-    -webkit-transform: translateY(0);
     transform: translateY(0);
 }
 
-/* Settings section */
-.settings-section {
-    margin-bottom: 20px;
+.trading-panel.hidden {
+    opacity: 0;
+    transform: translateY(-20px);
+    pointer-events: none;
 }
 
-.settings-group {
+/* Form elements */
+.form-group {
     margin-bottom: 15px;
 }
 
 label {
     display: block;
     margin-bottom: 5px;
+    font-weight: 500;
 }
 
 input[type="number"],
+input[type="text"],
 select {
     width: 100%;
-    padding: 8px;
+    padding: 8px 12px;
     border: 1px solid var(--border-color);
     border-radius: 4px;
-    background-color: #333;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+}
+
+input[type="number"]:focus,
+input[type="text"]:focus,
+select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+/* Buttons */
+.btn {
+    display: inline-block;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    font-weight: 500;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.3s ease, transform 0.1s ease;
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
     color: white;
 }
 
-/* Status styles */
-.status {
-    padding: 5px 10px;
+.btn-primary:hover:not(:disabled) {
+    background-color: #43a047;
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background-color: #1976d2;
+    transform: translateY(-1px);
+}
+
+/* Messages */
+.message {
+    padding: 12px 16px;
+    margin: 10px 0;
     border-radius: 4px;
+    font-weight: 500;
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.message.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.message.error {
+    background-color: var(--error-color);
+    color: white;
+}
+
+.message.success {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.message.warning {
+    background-color: var(--warning-color);
+    color: white;
+}
+
+/* Status indicators */
+.status {
     display: inline-block;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.875rem;
+    font-weight: 500;
 }
 
 .status.connected {
     background-color: var(--success-color);
     color: white;
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
 }
 
 .status.disconnected {
     background-color: var(--error-color);
     color: white;
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
-}
-
-.status.trading {
-    background-color: var(--primary-color);
-}
-
-.status.idle {
-    background-color: #666;
-}
-
-/* Message styles */
-.error-message,
-.success-message {
-    padding: 10px;
-    border-radius: 4px;
-    margin-bottom: 10px;
-}
-
-.error-message {
-    background-color: var(--error-color);
-    color: white;
-}
-
-.success-message {
-    background-color: var(--success-color);
-    color: white;
-}
-
-/* Positions section */
-.positions-section {
-    margin-top: 20px;
-}
-
-.position {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 10px;
-    padding: 10px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.position span {
-    display: inline-block;
-}
-
-/* Typography */
-h1, h2 {
-    color: var(--text-color);
-    margin-bottom: var(--spacing);
-}
-
-/* Status indicators */
-.status-wrapper {
-    display: -webkit-box;
-    display: flex;
-    -webkit-box-align: center;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.status {
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    -webkit-user-select: none;
-    user-select: none;
-}
-
-/* Trading panel */
-.trading-panel {
-    margin-top: var(--spacing);
-    display: none;
-    -webkit-animation: fadeIn 0.3s ease-in;
-    animation: fadeIn 0.3s ease-in;
-}
-
-/* Positions */
-.positions {
-    margin-top: var(--spacing);
-}
-
-.position-row {
-    display: -webkit-box;
-    display: -ms-flexbox;
-    display: flex;
-    -ms-flex-wrap: wrap;
-    flex-wrap: wrap;
-    gap: 10px;
-    padding: 10px;
-    border-bottom: 1px solid #eee;
-    -webkit-box-align: center;
-    -ms-flex-align: center;
-    align-items: center;
-}
-
-.position-row:hover {
-    background-color: #f9f9f9;
-}
-
-/* Status colors */
-.profit {
-    color: var(--success-color);
-    font-weight: 500;
-}
-
-.loss {
-    color: var(--error-color);
-    font-weight: 500;
-}
-
-.close-position {
-    background-color: var(--error-color);
-}
-
-.no-positions {
-    color: #666;
-    font-style: italic;
-    padding: 10px;
-}
-
-/* Error messages */
-.error-message {
-    color: var(--error-color);
-    background-color: #ffebee;
-    padding: 10px;
-    border-radius: 4px;
-    margin: 10px 0;
-    display: none;
 }
 
 /* Animations */
-@-webkit-keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
 }
 
 /* Responsive design */
 @media (max-width: 768px) {
-    .position-row {
-        -ms-grid-columns: 1fr 1fr;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 5px;
-    }
-
-    .container {
+    body {
         padding: 10px;
     }
 
-    input[type="number"] {
-        width: 100%;
+    .trading-panel {
+        padding: 15px;
     }
+
+    .btn {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+}
+
+/* Cross-browser compatibility */
+* {
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 /* High contrast mode support */
