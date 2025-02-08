@@ -81,18 +81,28 @@
 
     <!-- Load Scripts -->
     <script src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.iife.min.js"></script>
-    <script src="https://unpkg.com/@jup-ag/core@4.0.0-beta.21/dist/index.global.js"></script>
+    <script src="https://unpkg.com/@jup-ag/core@4.0.0-beta.21/dist/index.global.js" crossorigin="anonymous"></script>
     <script>
-        // Verify script loading
-        window.addEventListener('load', () => {
-            if (!window.solanaWeb3 || !window.Jupiter) {
-                console.error('Required dependencies not loaded:',
-                    !window.solanaWeb3 ? 'Solana Web3 missing' : '',
-                    !window.Jupiter ? 'Jupiter SDK missing' : '');
+        // Initialize global namespace
+        window.CryptoBot = {
+            dependencies: {
+                solanaWeb3: false,
+                jupiter: false
             }
-        });
+        };
+
+        // Monitor dependency loading
+        function checkDependencies() {
+            window.CryptoBot.dependencies.solanaWeb3 = typeof window.solanaWeb3 !== 'undefined';
+            window.CryptoBot.dependencies.jupiter = typeof window.Jupiter !== 'undefined';
+            
+            console.log('Dependencies status:', window.CryptoBot.dependencies);
+        }
+
+        // Check dependencies after scripts load
+        window.addEventListener('load', checkDependencies);
     </script>
-    <script src="jupiter.js"></script>
-    <script src="app.js"></script>
+    <script defer src="jupiter.js"></script>
+    <script defer src="app.js"></script>
 </body>
 </html>

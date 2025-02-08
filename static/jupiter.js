@@ -13,34 +13,69 @@ class JupiterDEX {
         let attempts = 0;
 
         while (attempts < maxAttempts) {
-            if (window.Jupiter && window.solanaWeb3) {
+            // Check if dependencies are loaded
+            const solanaLoaded = typeof window.solanaWeb3 !== 'undefined';
+            const jupiterLoaded = typeof window.Jupiter !== 'undefined';
+            
+            if (solanaLoaded && jupiterLoaded) {
+                console.log('All dependencies loaded successfully');
                 return true;
             }
+
+            // Log which dependencies are missing
+            if (!solanaLoaded) console.log('Waiting for Solana Web3...');
+            if (!jupiterLoaded) console.log('Waiting for Jupiter SDK...');
+            
             await new Promise(resolve => setTimeout(resolve, waitTime));
             attempts++;
-            console.log(`Waiting for dependencies... Attempt ${attempts}/${maxAttempts}`);
+            console.log(`Dependency check attempt ${attempts}/${maxAttempts}`);
         }
-        return false;
+
+        // If we get here, something didn't load
+        const missing = [];
+        if (typeof window.solanaWeb3 === 'undefined') missing.push('Solana Web3');
+        if (typeof window.Jupiter === 'undefined') missing.push('Jupiter SDK');
+        
+        throw new Error(`Failed to load dependencies: ${missing.join(', ')}`);
     }
 
     async initialize() {
         try {
             console.log('Initializing Jupiter DEX...');
             
-            // Wait for dependencies to be available
-            const dependenciesLoaded = await this.waitForDependencies();
-            if (!dependenciesLoaded) {
-                throw new Error('Required dependencies not loaded after waiting');
+            // Wait for dependencies with detailed error reporting
+            await this.waitForDependencies();
+
+            // Initialize Jupiter connection with fallback endpoints
+            const endpoints = [
+                'https://api.mainnet-beta.solana.com',
+                'https://solana-api.projectserum.com',
+                'https://rpc.ankr.com/solana'
+            ];
+
+            let connectionError;
+            for (const endpoint of endpoints) {
+                try {
+                    console.log(`Attempting to connect to ${endpoint}...`);
+                    this.connection = new window.solanaWeb3.Connection(endpoint, {
+                        commitment: 'confirmed',
+                        wsEndpoint: endpoint.replace('https', 'wss')
+                    });
+                    await this.connection.getLatestBlockhash();
+                    console.log(`Successfully connected to ${endpoint}`);
+                    break;
+                } catch (error) {
+                    console.warn(`Failed to connect to ${endpoint}:`, error);
+                    connectionError = error;
+                }
             }
 
-            // Initialize Jupiter connection
-            const endpoint = 'https://api.mainnet-beta.solana.com';
-            this.connection = new window.solanaWeb3.Connection(endpoint, {
-                commitment: 'confirmed',
-                wsEndpoint: 'wss://api.mainnet-beta.solana.com/'
-            });
+            if (!this.connection) {
+                throw connectionError || new Error('Failed to connect to any Solana endpoint');
+            }
 
             // Initialize Jupiter with retries
+            console.log('Initializing Jupiter SDK...');
             let jupiterInitAttempts = 0;
             while (jupiterInitAttempts < 3) {
                 try {
@@ -52,17 +87,19 @@ class JupiterDEX {
                             feeAccounts: {}
                         }
                     });
+                    console.log('Jupiter SDK initialized successfully');
                     break;
                 } catch (err) {
                     jupiterInitAttempts++;
-                    console.warn(`Jupiter initialization attempt ${jupiterInitAttempts} failed:`, err);
+                    console.warn(`Jupiter initialization attempt ${jupiterInitAttempts}/3 failed:`, err);
                     if (jupiterInitAttempts === 3) throw err;
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 }
             }
 
             this.initialized = true;
-            console.log('Jupiter DEX initialized successfully');
+            console.log('Jupiter DEX initialization complete');
+            return true;
         } catch (error) {
             console.error('Failed to initialize Jupiter:', error);
             throw error;
