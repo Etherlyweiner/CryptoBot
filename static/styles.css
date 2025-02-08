@@ -280,16 +280,11 @@ select:focus {
 
 /* Scrollbar customization */
 * {
-    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    /* Modern Firefox */
+    scrollbar-width: thin;
 }
 
-@supports (scrollbar-width: thin) {
-    * {
-        scrollbar-width: thin;
-    }
-}
-
-/* For Webkit browsers */
+/* WebKit/Blink browsers */
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -297,11 +292,34 @@ select:focus {
 
 ::-webkit-scrollbar-track {
     background: var(--scrollbar-track);
+    border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb);
     border-radius: 4px;
+    border: 2px solid var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-color);
+}
+
+/* Ensure smooth scrolling for all browsers */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Hide scrollbar for mobile devices while keeping functionality */
+@media (max-width: 768px) {
+    * {
+        -ms-overflow-style: -ms-autohiding-scrollbar;
+        scrollbar-width: none;
+    }
+    ::-webkit-scrollbar {
+        width: 0px;
+        background: transparent;
+    }
 }
 
 /* User selection styles */
