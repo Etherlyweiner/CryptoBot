@@ -674,8 +674,9 @@ html {
     
     .scroll-container {
         overflow-y: auto;
-        overflow-scrolling: touch;
+        overscroll-behavior: contain;
         margin-right: -16px;
         padding-right: 16px;
+        -webkit-overflow-scrolling: touch; /* For older iOS */
     }
 }
