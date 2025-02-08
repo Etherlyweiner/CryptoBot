@@ -325,17 +325,17 @@ html {
 
 /* User selection styles */
 .no-select {
-    user-select: none;
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
+    user-select: none;
 }
 
 .allow-select {
-    user-select: text;
     -webkit-user-select: text;
     -moz-user-select: text;
     -ms-user-select: text;
+    user-select: text;
 }
 
 /* Performance optimizations */
@@ -652,143 +652,13 @@ html {
     }
 }
 
-/* Base styles */
-:root {
-    --success-color: #4caf50;
-    --error-color: #f44336;
-    --warning-color: #ff9800;
-    --primary-color: #2196f3;
-}
-
-* {
-    margin: 0;
-    padding: 0;
-    -webkit-box-sizing: border-box;
-    box-sizing: border-box;
-}
-
-/* Base text adjustments */
-html {
-    line-height: 1.5;
-}
-
-/* Panel visibility and transitions */
-.panel {
-    display: none;
-    opacity: 0;
-    -webkit-transform: translateY(-10px);
-    transform: translateY(-10px);
-    -webkit-transition: opacity 0.3s ease-out, -webkit-transform 0.3s ease-out;
-    transition: opacity 0.3s ease-out, transform 0.3s ease-out;
-}
-
-.panel[role="region"] {
-    display: block;
-    opacity: 1;
-    -webkit-transform: translateY(0);
-    transform: translateY(0);
-}
-
-/* Message animations */
-.message {
-    display: none;
-    opacity: 0;
-    -webkit-transform: translateY(-10px);
-    transform: translateY(-10px);
-    -webkit-transition: opacity 0.3s ease-out, -webkit-transform 0.3s ease-out;
-    transition: opacity 0.3s ease-out, transform 0.3s ease-out;
-}
-
-.message:not(:empty) {
-    display: block;
-    opacity: 1;
-    -webkit-transform: translateY(0);
-    transform: translateY(0);
-}
-
-/* Status indicators */
-.status-wrapper {
-    display: -webkit-box;
-    display: flex;
-    -webkit-box-align: center;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.status {
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.875rem;
-    font-weight: 500;
-    -webkit-user-select: none;
-    user-select: none;
-}
-
-.status.connected {
-    background-color: var(--success-color);
-    color: white;
-}
-
-.status.disconnected {
-    background-color: var(--error-color);
-    color: white;
-}
-
-/* Form controls */
-.checkbox-label {
-    display: -webkit-box;
-    display: flex;
-    -webkit-box-align: center;
-    align-items: center;
-    gap: 0.5rem;
-    cursor: pointer;
-    -webkit-user-select: none;
-    user-select: none;
-}
-
-.checkbox-label input[type="checkbox"] {
-    width: auto;
-    margin: 0;
-}
-
-/* Button group */
-.button-group {
-    margin-top: 1rem;
-    display: -webkit-box;
-    display: flex;
-    gap: 0.5rem;
-}
-
-/* Positions section */
-.positions-section {
-    margin-top: 2rem;
-}
-
-.no-positions {
-    text-align: center;
-    color: #666;
-    padding: 1rem;
-}
-
-/* Media queries for better responsiveness */
-@media (max-width: 768px) {
-    html {
-        font-size: 14px;
-    }
-    
-    .button-group {
-        -webkit-box-orient: vertical;
-        -webkit-box-direction: normal;
-        flex-direction: column;
-    }
-}
-
 /* Text truncation with ellipsis */
 .truncate {
-    display: block;
     display: -webkit-box;
+    display: block;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     overflow: hidden;
     text-overflow: ellipsis;
 }
@@ -804,7 +674,7 @@ html {
     
     .scroll-container {
         overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
+        overflow-scrolling: touch;
         margin-right: -16px;
         padding-right: 16px;
     }
