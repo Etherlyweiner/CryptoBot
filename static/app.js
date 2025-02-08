@@ -1,4 +1,8 @@
-// Core trading bot functionality
+// Initialize global variables
+let walletConnected = false;
+let jupiter = null;
+let tradingBot = null;
+
 class TradingBot {
     constructor() {
         this.isTrading = false;
@@ -6,6 +10,25 @@ class TradingBot {
         this.settings = null;
         this.tradeInterval = null;
         console.log('Trading bot initialized');
+    }
+
+    async initialize() {
+        try {
+            // Initialize Jupiter if not already initialized
+            if (!window.jupiter) {
+                throw new Error('Jupiter instance not found');
+            }
+
+            if (!window.jupiter.initialized) {
+                await window.jupiter.initialize();
+            }
+
+            jupiter = window.jupiter;
+            return true;
+        } catch (error) {
+            console.error('Failed to initialize trading bot:', error);
+            throw error;
+        }
     }
 
     async startTrading(settings) {
@@ -20,14 +43,16 @@ class TradingBot {
         this.settings = settings;
         this.isTrading = true;
         
-        // Start trading loop
+        // Start trading loop with error handling
         this.tradeInterval = setInterval(() => {
             this.executeTrade().catch(error => {
                 console.error('Trade execution error:', error);
-                if (this.onError) this.onError(error);
+                showMessage('error-message', `Trade error: ${error.message}`, 'alert');
+                this.stopTrading();
             });
         }, settings.interval * 1000);
 
+        showMessage('success-message', 'Trading started successfully', 'status');
         console.log('Trading started with settings:', settings);
     }
 
@@ -67,11 +92,6 @@ class TradingBot {
     }
 }
 
-// Initialize global variables
-let walletConnected = false;
-let jupiter = null;
-let tradingBot = null;
-
 // Status update handler
 function updateWalletStatus(status) {
     console.log('Wallet status update:', status);
@@ -87,33 +107,58 @@ function updateWalletStatus(status) {
             connectButton.textContent = 'Disconnect';
             walletStatus.textContent = 'Connected';
             walletStatus.className = 'status connected';
-            tradingPanel.style.display = 'block';
+            togglePanel('trading-panel', true);
         } else {
             connectButton.textContent = 'Connect Wallet';
             walletStatus.textContent = 'Not Connected';
             walletStatus.className = 'status disconnected';
-            tradingPanel.style.display = 'none';
+            togglePanel('trading-panel', false);
         }
     }
 }
 
+function togglePanel(panelId, show) {
+    const panel = document.getElementById(panelId);
+    if (panel) {
+        if (show) {
+            panel.setAttribute('role', 'region');
+        } else {
+            panel.removeAttribute('role');
+        }
+    }
+}
+
+function showMessage(messageId, text, type = 'status') {
+    const message = document.getElementById(messageId);
+    if (message) {
+        message.textContent = text;
+        message.setAttribute('role', type);
+    }
+}
+
+function hideMessage(messageId) {
+    const message = document.getElementById(messageId);
+    if (message) {
+        message.textContent = '';
+    }
+}
+
 // Wait for DOM to be ready
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     console.log('DOM loaded, initializing trading bot...');
     
     // Initialize trading bot
-    function initializeTradingBot() {
+    async function initializeTradingBot() {
         try {
             console.log('Initializing trading bot...');
             
             // Create trading bot instance
             tradingBot = new TradingBot();
             
-            // Initialize Jupiter DEX if not already initialized
-            if (!jupiter) {
-                jupiter = new JupiterDEX();
-                jupiter.initialize();
-            }
+            // Initialize trading bot
+            await tradingBot.initialize().catch(error => {
+                console.error('Failed to initialize trading bot:', error);
+            });
             
             // Set up event handlers
             tradingBot.onTradeComplete = (trade) => {
@@ -136,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    initializeTradingBot();
+    await initializeTradingBot();
     
     // Set up wallet status handler
     if (window.walletManager) {
@@ -145,23 +190,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Initialize trading controls
     initializeTradingControls();
-    
-    // Initialize wallet connection button
-    const connectButton = document.getElementById('connect-wallet');
-    if (connectButton) {
-        connectButton.addEventListener('click', async () => {
-            try {
-                if (!walletConnected) {
-                    await window.walletManager.connect();
-                } else {
-                    await window.walletManager.disconnect();
-                }
-            } catch (error) {
-                console.error('Wallet connection error:', error);
-                showError('Failed to connect wallet: ' + error.message);
-            }
-        });
-    }
 });
 
 // Error handling
@@ -187,66 +215,6 @@ function showSuccess(message) {
         }, 5000);
     }
     console.log(message);
-}
-
-function initializeTradingControls() {
-    console.log('Initializing trading controls...');
-    
-    // Get trading control elements
-    const startButton = document.getElementById('start-trading');
-    const autoTradingCheckbox = document.getElementById('auto-trading');
-    const tradingPairSelect = document.getElementById('trading-pair');
-    const tradingAmountInput = document.getElementById('trading-amount');
-    const tradingIntervalInput = document.getElementById('trading-interval');
-    
-    // Check if elements exist
-    if (startButton && autoTradingCheckbox && tradingPairSelect && 
-        tradingAmountInput && tradingIntervalInput) {
-        console.log('Trading control elements found');
-        
-        // Start trading button click handler
-        startButton.addEventListener('click', async () => {
-            console.log('Start trading button clicked');
-            
-            try {
-                // Validate settings
-                const settings = validateSettings();
-                
-                console.log('Validated settings:', settings);
-                
-                // Apply settings to trading bot
-                await tradingBot.startTrading(settings);
-                
-            } catch (error) {
-                console.error('Failed to start trading:', error);
-                showError(error.message);
-            }
-        });
-        
-        // Auto trading checkbox change handler
-        autoTradingCheckbox.addEventListener('change', (e) => {
-            tradingBot.settings.enabled = e.target.checked;
-        });
-        
-        // Trading pair select change handler
-        tradingPairSelect.addEventListener('change', (e) => {
-            tradingBot.settings.tradingPair = e.target.value;
-        });
-        
-        // Trading amount input change handler
-        tradingAmountInput.addEventListener('change', (e) => {
-            tradingBot.settings.amount = parseFloat(e.target.value);
-        });
-        
-        // Trading interval input change handler
-        tradingIntervalInput.addEventListener('change', (e) => {
-            tradingBot.settings.interval = parseInt(e.target.value);
-        });
-        
-        console.log('Trading controls initialized');
-    } else {
-        console.error('Some trading control elements are missing');
-    }
 }
 
 function validateSettings() {
@@ -290,97 +258,104 @@ function validateSettings() {
 }
 
 function updatePositionsDisplay() {
-    const positionsList = document.getElementById('positions-list');
-    if (!positionsList) {
-        console.warn('Positions list element not found');
-        return;
+    const positionsElement = document.getElementById('positions');
+    if (positionsElement && tradingBot.positions.length > 0) {
+        const positionsHtml = tradingBot.positions.map(pos => `
+            <div class="position">
+                <span>${new Date(pos.time).toLocaleString()}</span>
+                <span>${pos.type}</span>
+                <span>${pos.price.toFixed(4)}</span>
+                <span>${pos.amount.toFixed(4)}</span>
+                <span class="status ${pos.status}">${pos.status}</span>
+            </div>
+        `).join('');
+        positionsElement.innerHTML = positionsHtml;
     }
+}
 
-    const positions = Array.from(tradingBot.positions.entries());
-    const template = document.getElementById('position-row-template');
+function initializeTradingControls() {
+    console.log('Initializing trading controls...');
     
-    // Clear existing positions except the "no positions" message
-    const existingPositions = positionsList.querySelectorAll('.position-row');
-    existingPositions.forEach(row => row.remove());
-
-    if (positions.length === 0) {
-        const noPositionsRow = document.createElement('div');
-        noPositionsRow.role = 'row';
-        noPositionsRow.className = 'no-positions';
-        const cell = document.createElement('div');
-        cell.role = 'cell';
-        cell.textContent = 'No active positions';
-        noPositionsRow.appendChild(cell);
-        positionsList.appendChild(noPositionsRow);
+    const tradingPanel = document.getElementById('trading-panel');
+    const startTradingButton = document.getElementById('start-trading');
+    const autoTradingCheckbox = document.getElementById('auto-trading');
+    const tradingPairSelect = document.getElementById('trading-pair');
+    const tradingAmountInput = document.getElementById('trading-amount');
+    const tradingIntervalInput = document.getElementById('trading-interval');
+    
+    if (!tradingPanel || !startTradingButton || !autoTradingCheckbox || 
+        !tradingPairSelect || !tradingAmountInput || !tradingIntervalInput) {
+        console.error('Required trading control elements not found');
         return;
     }
-
-    positions.forEach(([address, position]) => {
-        if (template) {
-            const clone = template.content.cloneNode(true);
-            // Fill in position data
-            clone.querySelector('.token-name').textContent = position.symbol || address;
-            clone.querySelector('.token-amount').textContent = position.amount;
-            clone.querySelector('.entry-price').textContent = position.entryPrice;
-            clone.querySelector('.current-price').textContent = position.currentPrice;
-            clone.querySelector('.pnl').textContent = position.pnl;
+    
+    console.log('Trading control elements found');
+    
+    // Initially hide trading panel
+    togglePanel('trading-panel', false);
+    
+    // Enable/disable trading button based on form validity
+    function updateTradingButton() {
+        const isValid = tradingPairSelect.value && 
+                       tradingAmountInput.value >= 0.1 &&
+                       tradingIntervalInput.value >= 10;
+        startTradingButton.disabled = !isValid;
+    }
+    
+    // Add event listeners
+    tradingPairSelect.addEventListener('change', updateTradingButton);
+    tradingAmountInput.addEventListener('input', updateTradingButton);
+    tradingIntervalInput.addEventListener('input', updateTradingButton);
+    
+    startTradingButton.addEventListener('click', async () => {
+        try {
+            startTradingButton.disabled = true;
+            showMessage('success-message', 'Starting trading...', 'status');
             
-            const closeButton = clone.querySelector('.close-position');
-            if (closeButton) {
-                closeButton.addEventListener('click', () => tradingBot.closePosition(address));
+            // Validate settings
+            const settings = validateSettings();
+            if (!settings) {
+                startTradingButton.disabled = false;
+                return;
             }
             
-            positionsList.appendChild(clone);
+            // Start trading
+            await tradingBot.startTrading(settings);
+            
+        } catch (error) {
+            console.error('Trading error:', error);
+            showMessage('error-message', `Trading error: ${error.message}`, 'alert');
+            startTradingButton.disabled = false;
         }
     });
+    
+    console.log('Trading controls initialized');
 }
 
-// Trading bot status updates
-tradingBot.onStatusUpdate = () => {
-    const botStatusSpan = document.getElementById('botStatus');
-    const startButton = document.getElementById('startBot');
-    const stopButton = document.getElementById('stopBot');
-    
-    botStatusSpan.textContent = tradingBot.active ? 'Active' : 'Inactive';
-    startButton.disabled = tradingBot.active;
-    stopButton.disabled = !tradingBot.active;
-    
-    document.getElementById('activeTrades').textContent = tradingBot.positions.size;
-    updatePositionsDisplay();
-};
-
-function disableSettings(disabled) {
-    // Disable/enable all input fields while trading
-    const inputs = document.querySelectorAll('.settings-group input');
-    inputs.forEach(input => {
-        input.disabled = disabled;
-    });
-}
-
-function connectWallet() {
-    const connectButton = document.getElementById('connect-wallet');
-    if (!connectButton) {
-        console.error('Connect wallet button not found');
-        return;
+function showPanel(panelId) {
+    const panel = document.getElementById(panelId);
+    if (panel) {
+        panel.setAttribute('aria-expanded', 'true');
     }
+}
 
-    try {
-        connectButton.disabled = true;
-        connectButton.textContent = 'Connecting...';
-        
-        window.walletManager.connect();
-        
-        if (!jupiter) {
-            jupiter = new JupiterDEX();
-            jupiter.initialize();
-        }
-        
-    } catch (error) {
-        console.error('Failed to connect wallet:', error);
-        showError('Failed to connect wallet: ' + error.message);
-        if (connectButton) {
-            connectButton.disabled = false;
-            connectButton.textContent = 'Connect Wallet';
-        }
+function hidePanel(panelId) {
+    const panel = document.getElementById(panelId);
+    if (panel) {
+        panel.setAttribute('aria-expanded', 'false');
+    }
+}
+
+function showMessage(messageId, text) {
+    const message = document.getElementById(messageId);
+    if (message) {
+        message.textContent = text;
+    }
+}
+
+function hideMessage(messageId) {
+    const message = document.getElementById(messageId);
+    if (message) {
+        message.textContent = '';
     }
 }

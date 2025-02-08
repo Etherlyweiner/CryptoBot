@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <title>Solana Trading Bot</title>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -11,63 +12,86 @@
         <header>
             <h1>Solana Trading Bot</h1>
             <div class="wallet-section">
-                <button id="connect-wallet" class="btn">Connect Wallet</button>
-                <div id="wallet-status" class="status">Not Connected</div>
+                <button id="connect-wallet" class="btn btn-primary" aria-label="Connect wallet">Connect Wallet</button>
+                <div class="status-wrapper">
+                    <span id="wallet-status" class="status disconnected" aria-live="polite">Not Connected</span>
+                </div>
             </div>
         </header>
 
-        <div id="trading-panel" class="panel" style="display: none;">
-            <div class="settings-section">
-                <h2>Trading Settings</h2>
-                <div class="settings-group">
-                    <label>
-                        <input type="checkbox" id="auto-trading">
-                        Enable Auto Trading
-                    </label>
+        <main>
+            <div id="trading-panel" class="panel" role="region" aria-labelledby="trading-panel-title">
+                <div class="controls">
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="auto-trading" aria-label="Enable auto trading">
+                            <span>Enable Auto Trading</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="trading-pair">Trading Pair</label>
+                        <select id="trading-pair" name="trading-pair">
+                            <option value="">Select a trading pair</option>
+                            <option value="SOL/USDC">SOL/USDC</option>
+                            <option value="SOL/USDT">SOL/USDT</option>
+                            <option value="BONK/SOL">BONK/SOL</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="trading-amount">Trading Amount (SOL)</label>
+                        <input type="number" 
+                               id="trading-amount" 
+                               name="trading-amount" 
+                               min="0.1" 
+                               step="0.1" 
+                               value="0.1" 
+                               placeholder="Enter trading amount">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="trading-interval">Trading Interval (seconds)</label>
+                        <input type="number" 
+                               id="trading-interval" 
+                               name="trading-interval"
+                               min="10" 
+                               step="1" 
+                               value="60"
+                               placeholder="Enter trading interval">
+                    </div>
+
+                    <div class="button-group">
+                        <button id="start-trading" class="btn btn-primary" disabled>Start Trading</button>
+                    </div>
                 </div>
-                <div class="settings-group">
-                    <label>Trading Pair:</label>
-                    <select id="trading-pair">
-                        <option value="">Select Pair</option>
-                        <option value="SOL/USDC">SOL/USDC</option>
-                        <option value="SOL/USDT">SOL/USDT</option>
-                        <option value="BONK/SOL">BONK/SOL</option>
-                        <option value="JUP/SOL">JUP/SOL</option>
-                    </select>
-                </div>
-                <div class="settings-group">
-                    <label>Amount (SOL):</label>
-                    <input type="number" id="trading-amount" min="0.1" step="0.1" value="0.1">
-                </div>
-                <div class="settings-group">
-                    <label>Trading Interval (seconds):</label>
-                    <input type="number" id="trading-interval" min="10" step="1" value="60">
-                </div>
-                <div class="settings-group">
-                    <button id="start-trading" class="btn btn-primary" disabled>Start Trading</button>
-                </div>
+
+                <section class="positions-section">
+                    <h2 id="trading-panel-title">Active Positions</h2>
+                    <div id="positions" class="positions" aria-live="polite">
+                        <div class="no-positions">No active positions</div>
+                    </div>
+                </section>
             </div>
 
-            <div class="status-section">
-                <h2>Trading Status</h2>
-                <div id="trading-status" class="status">Inactive</div>
-                <div id="error-message" class="error-message" style="display: none;"></div>
-                <div id="success-message" class="success-message" style="display: none;"></div>
-            </div>
-
-            <div class="positions-section">
-                <h2>Open Positions</h2>
-                <div id="positions"></div>
-            </div>
-        </div>
+            <div id="error-message" class="message error-message" role="alert"></div>
+            <div id="success-message" class="message success-message" role="status"></div>
+        </main>
     </div>
 
-    <!-- Load dependencies -->
-    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@jup-ag/core@latest"></script>
-    
-    <!-- Load application scripts -->
-    <script src="wallet.js"></script>
+    <!-- Load Scripts -->
+    <script src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.iife.min.js"></script>
+    <script src="https://unpkg.com/@jup-ag/core@4.0.0-beta.21/dist/index.global.js"></script>
+    <script>
+        // Verify script loading
+        window.addEventListener('load', () => {
+            if (!window.solanaWeb3 || !window.Jupiter) {
+                console.error('Required dependencies not loaded:',
+                    !window.solanaWeb3 ? 'Solana Web3 missing' : '',
+                    !window.Jupiter ? 'Jupiter SDK missing' : '');
+            }
+        });
+    </script>
     <script src="jupiter.js"></script>
     <script src="app.js"></script>
 </body>

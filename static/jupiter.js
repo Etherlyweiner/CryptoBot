@@ -7,27 +7,59 @@ class JupiterDEX {
         this.jupiter = null;
     }
 
+    async waitForDependencies() {
+        const maxAttempts = 20;
+        const waitTime = 500;
+        let attempts = 0;
+
+        while (attempts < maxAttempts) {
+            if (window.Jupiter && window.solanaWeb3) {
+                return true;
+            }
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            attempts++;
+            console.log(`Waiting for dependencies... Attempt ${attempts}/${maxAttempts}`);
+        }
+        return false;
+    }
+
     async initialize() {
         try {
             console.log('Initializing Jupiter DEX...');
             
-            // Check if Jupiter SDK is loaded
-            if (typeof Jupiter === 'undefined') {
-                throw new Error('Jupiter SDK not loaded');
+            // Wait for dependencies to be available
+            const dependenciesLoaded = await this.waitForDependencies();
+            if (!dependenciesLoaded) {
+                throw new Error('Required dependencies not loaded after waiting');
             }
 
             // Initialize Jupiter connection
-            this.connection = new solanaWeb3.Connection(
-                'https://api.mainnet-beta.solana.com',
-                'confirmed'
-            );
-
-            // Initialize Jupiter
-            this.jupiter = await Jupiter.load({
-                connection: this.connection,
-                cluster: 'mainnet-beta',
-                userPublicKey: window.walletManager?.publicKey,
+            const endpoint = 'https://api.mainnet-beta.solana.com';
+            this.connection = new window.solanaWeb3.Connection(endpoint, {
+                commitment: 'confirmed',
+                wsEndpoint: 'wss://api.mainnet-beta.solana.com/'
             });
+
+            // Initialize Jupiter with retries
+            let jupiterInitAttempts = 0;
+            while (jupiterInitAttempts < 3) {
+                try {
+                    this.jupiter = await window.Jupiter.load({
+                        connection: this.connection,
+                        cluster: 'mainnet-beta',
+                        platformFeeAndAccounts: {
+                            feeBps: 20,
+                            feeAccounts: {}
+                        }
+                    });
+                    break;
+                } catch (err) {
+                    jupiterInitAttempts++;
+                    console.warn(`Jupiter initialization attempt ${jupiterInitAttempts} failed:`, err);
+                    if (jupiterInitAttempts === 3) throw err;
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
 
             this.initialized = true;
             console.log('Jupiter DEX initialized successfully');
