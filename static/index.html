@@ -76,12 +76,13 @@
 
             <div id="error-message" class="message error-message" role="alert"></div>
             <div id="success-message" class="message success-message" role="status"></div>
+            <div id="dependencies-status"></div>
         </main>
     </div>
 
     <!-- Load Scripts -->
     <script src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.iife.min.js"></script>
-    <script src="https://unpkg.com/@jup-ag/core@latest/dist/index.global.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jup-ag/core@4.0.0-beta.18/dist/index.iife.js" integrity="sha384-K0UXWwFB3vDZ0aCZ5lKF3BgBgp9DJo5fAEAGPYX1wC5zjGbY6LDhFBpWZ1q4Uf6" crossorigin="anonymous"></script>
     <script>
         // Initialize global namespace
         window.CryptoBot = {
@@ -91,19 +92,17 @@
             }
         };
 
-        // Initialize Jupiter namespace
-        window.Jupiter = window.JupiterCore;
-
         // Monitor dependency loading
         function checkDependencies() {
-            window.CryptoBot.dependencies.solanaWeb3 = typeof window.solanaWeb3 !== 'undefined';
-            window.CryptoBot.dependencies.jupiter = typeof window.Jupiter !== 'undefined';
-            
-            console.log('Dependencies status:', window.CryptoBot.dependencies);
+            const deps = window.CryptoBot.dependencies;
+            deps.solanaWeb3 = typeof window.solanaWeb3 !== 'undefined';
+            deps.jupiter = typeof window.Jupiter !== 'undefined';
+            document.getElementById('dependencies-status').textContent = 
+                `Dependencies status: ${JSON.stringify(deps)}`;
         }
 
-        // Check dependencies after scripts load
-        window.addEventListener('load', checkDependencies);
+        // Check dependencies periodically
+        setInterval(checkDependencies, 1000);
     </script>
     <script defer src="jupiter.js"></script>
     <script defer src="app.js"></script>
