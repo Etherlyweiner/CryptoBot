@@ -15,7 +15,7 @@ class JupiterDEX {
         while (attempts < maxAttempts) {
             // Check if dependencies are loaded
             const solanaLoaded = typeof window.solanaWeb3 !== 'undefined';
-            const jupiterLoaded = typeof window.Jupiter !== 'undefined';
+            const jupiterLoaded = typeof window.JupiterCore !== 'undefined';
             
             if (solanaLoaded && jupiterLoaded) {
                 console.log('All dependencies loaded successfully');
@@ -34,7 +34,7 @@ class JupiterDEX {
         // If we get here, something didn't load
         const missing = [];
         if (typeof window.solanaWeb3 === 'undefined') missing.push('Solana Web3');
-        if (typeof window.Jupiter === 'undefined') missing.push('Jupiter SDK');
+        if (typeof window.JupiterCore === 'undefined') missing.push('Jupiter SDK');
         
         throw new Error(`Failed to load dependencies: ${missing.join(', ')}`);
     }
@@ -49,57 +49,35 @@ class JupiterDEX {
             // Initialize Jupiter connection with fallback endpoints
             const endpoints = [
                 'https://api.mainnet-beta.solana.com',
-                'https://solana-api.projectserum.com',
-                'https://rpc.ankr.com/solana'
+                'https://solana-mainnet.rpc.extrnode.com',
+                'https://api.metaplex.solana.com'
             ];
 
-            let connectionError;
+            // Try each endpoint until one works
             for (const endpoint of endpoints) {
                 try {
-                    console.log(`Attempting to connect to ${endpoint}...`);
-                    this.connection = new window.solanaWeb3.Connection(endpoint, {
-                        commitment: 'confirmed',
-                        wsEndpoint: endpoint.replace('https', 'wss')
-                    });
-                    await this.connection.getLatestBlockhash();
-                    console.log(`Successfully connected to ${endpoint}`);
+                    this.connection = new window.solanaWeb3.Connection(endpoint);
+                    await this.connection.getVersion();
+                    console.log(`Connected to Solana endpoint: ${endpoint}`);
                     break;
                 } catch (error) {
-                    console.warn(`Failed to connect to ${endpoint}:`, error);
-                    connectionError = error;
+                    console.warn(`Failed to connect to ${endpoint}, trying next endpoint...`);
                 }
             }
 
             if (!this.connection) {
-                throw connectionError || new Error('Failed to connect to any Solana endpoint');
+                throw new Error('Failed to connect to any Solana endpoint');
             }
 
-            // Initialize Jupiter with retries
-            console.log('Initializing Jupiter SDK...');
-            let jupiterInitAttempts = 0;
-            while (jupiterInitAttempts < 3) {
-                try {
-                    this.jupiter = await window.Jupiter.load({
-                        connection: this.connection,
-                        cluster: 'mainnet-beta',
-                        platformFeeAndAccounts: {
-                            feeBps: 20,
-                            feeAccounts: {}
-                        }
-                    });
-                    console.log('Jupiter SDK initialized successfully');
-                    break;
-                } catch (err) {
-                    jupiterInitAttempts++;
-                    console.warn(`Jupiter initialization attempt ${jupiterInitAttempts}/3 failed:`, err);
-                    if (jupiterInitAttempts === 3) throw err;
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
-            }
+            // Initialize Jupiter with the latest SDK version
+            this.jupiter = await window.JupiterCore.Jupiter.load({
+                connection: this.connection,
+                cluster: 'mainnet-beta',
+                env: 'mainnet-beta'
+            });
 
             this.initialized = true;
-            console.log('Jupiter DEX initialization complete');
-            return true;
+            console.log('Jupiter DEX initialized successfully');
         } catch (error) {
             console.error('Failed to initialize Jupiter:', error);
             throw error;
@@ -237,6 +215,31 @@ class JupiterDEX {
         }
     }
 
+    async getQuote(inputMint, outputMint, amount, slippage = 1) {
+        if (!this.initialized) {
+            throw new Error('Jupiter DEX not initialized');
+        }
+
+        try {
+            const routes = await this.jupiter.computeRoutes({
+                inputMint,
+                outputMint,
+                amount,
+                slippageBps: slippage * 100,
+                forceFetch: true
+            });
+
+            if (!routes || !routes.routesInfos || routes.routesInfos.length === 0) {
+                throw new Error('No routes found');
+            }
+
+            return routes.routesInfos[0];
+        } catch (error) {
+            console.error('Failed to get quote:', error);
+            throw error;
+        }
+    }
+
     async swap(params) {
         try {
             if (!this.initialized) {
@@ -274,44 +277,44 @@ class JupiterDEX {
         }
     }
 
-    async getQuote(inputMint, outputMint, amount, slippage = 1) {
-        try {
-            if (!this.initialized) {
-                throw new Error('Jupiter not initialized');
-            }
-
-            const quote = await this.jupiter.computeRoutes({
-                inputMint,
-                outputMint,
-                amount,
-                slippageBps: slippage * 100,
-            });
-
-            return quote;
-        } catch (error) {
-            console.error('Failed to get quote:', error);
-            throw error;
+    async executeSwap(wallet, route) {
+        if (!this.initialized) {
+            throw new Error('Jupiter DEX not initialized');
         }
-    }
 
-    async executeTrade(route) {
         try {
-            if (!this.initialized) {
-                throw new Error('Jupiter not initialized');
-            }
-
             const { transactions } = await this.jupiter.exchange({
                 routeInfo: route,
+                userPublicKey: wallet.publicKey,
+                wrapUnwrapSOL: true
             });
 
-            // Sign and send the transaction
-            const signature = await window.walletManager.sendTransaction(
-                transactions.transaction
-            );
+            const { setupTransaction, swapTransaction, cleanupTransaction } = transactions;
 
-            return signature;
+            // Helper function to send and confirm transaction
+            const sendAndConfirm = async (transaction) => {
+                if (!transaction) return;
+                
+                try {
+                    const signedTx = await wallet.signTransaction(transaction);
+                    const txid = await this.connection.sendRawTransaction(signedTx.serialize());
+                    await this.connection.confirmTransaction(txid);
+                    console.log(`Transaction confirmed: ${txid}`);
+                    return txid;
+                } catch (error) {
+                    console.error('Transaction failed:', error);
+                    throw error;
+                }
+            };
+
+            // Execute transactions in sequence
+            if (setupTransaction) await sendAndConfirm(setupTransaction);
+            const swapTxid = await sendAndConfirm(swapTransaction);
+            if (cleanupTransaction) await sendAndConfirm(cleanupTransaction);
+
+            return swapTxid;
         } catch (error) {
-            console.error('Failed to execute trade:', error);
+            console.error('Failed to execute swap:', error);
             throw error;
         }
     }
