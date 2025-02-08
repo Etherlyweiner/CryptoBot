@@ -109,9 +109,9 @@ A sophisticated cryptocurrency trading bot focused on conservative trading strat
 2. **Manual Start**
 
    - Run `start_all.bat` from the project directory
-   - The dashboard will open automatically at http://localhost:8000
+   - The dashboard will open automatically at [http://localhost:8000](http://localhost:8000)
 
-### Components
+### System Components
 
 The startup script ensures all components start in the correct order:
 
@@ -178,17 +178,17 @@ Edit `config/network.json`:
    streamlit run src/cryptobot/app.py
    ```
 
-3. Navigate to the dashboard (default: http://localhost:8501)
+3. Navigate to the dashboard (default: [http://localhost:8501](http://localhost:8501))
 4. Configure your trading parameters
 5. Start trading!
 
-### Monitoring
+### System Monitoring
 
-- View real-time metrics at http://localhost:8501
+- View real-time metrics at [http://localhost:8501](http://localhost:8501)
 - Check logs in the `logs` directory
-- Monitor Prometheus metrics at http://localhost:9090
+- Monitor Prometheus metrics at [http://localhost:9090](http://localhost:9090)
 
-### Backup and Recovery
+### Data Management
 
 - Daily log rotation
 - Automatic state backup
