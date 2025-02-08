@@ -81,7 +81,7 @@
 
     <!-- Load Scripts -->
     <script src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.iife.min.js"></script>
-    <script src="https://unpkg.com/@jup-ag/core@4.0.0-beta.21/dist/index.global.js"></script>
+    <script src="https://unpkg.com/@jup-ag/core@latest/dist/index.global.js" crossorigin="anonymous"></script>
     <script>
         // Initialize global namespace
         window.CryptoBot = {
@@ -90,6 +90,9 @@
                 jupiter: false
             }
         };
+
+        // Initialize Jupiter namespace
+        window.Jupiter = window.JupiterCore;
 
         // Monitor dependency loading
         function checkDependencies() {
