@@ -1,5 +1,9 @@
 // Token Discovery and Monitoring
-const { BIRDEYE_API, DEXSCREENER_API, JUPITER_API } = window.CONSTANTS;
+const { BIRDEYE_API, DEXSCREENER_API } = window.CONSTANTS || {};
+
+if (!BIRDEYE_API || !DEXSCREENER_API) {
+    console.error('Required constants are not defined. Make sure constants are loaded before this script.');
+}
 
 class TokenDiscovery {
     constructor() {
@@ -21,7 +25,7 @@ class TokenDiscovery {
     async loadKnownTokens() {
         try {
             // Load tokens from Jupiter API
-            const response = await fetch(JUPITER_API);
+            const response = await fetch('https://token.jup.ag/all');
             const tokens = await response.json();
             tokens.forEach(token => this.knownTokens.add(token.address));
             console.log(`Loaded ${this.knownTokens.size} known tokens`);
@@ -40,8 +44,7 @@ class TokenDiscovery {
         try {
             await Promise.all([
                 this.scanBirdeyeTrending(),
-                this.scanDexScreener(),
-                this.detectNewListings()
+                this.scanDexScreener()
             ]);
 
             // Update UI with new findings
@@ -53,6 +56,11 @@ class TokenDiscovery {
     }
 
     async scanBirdeyeTrending() {
+        if (!BIRDEYE_API) {
+            console.error('BIRDEYE_API constant is not defined');
+            return;
+        }
+
         try {
             const response = await fetch(`${BIRDEYE_API}/trending`, {
                 headers: { 'x-chain': 'solana' }
@@ -74,8 +82,13 @@ class TokenDiscovery {
     }
 
     async scanDexScreener() {
+        if (!DEXSCREENER_API) {
+            console.error('DEXSCREENER_API constant is not defined');
+            return;
+        }
+
         try {
-            const response = await fetch(`${DEXSCREENER_API}/solana`);
+            const response = await fetch(DEXSCREENER_API);
             const data = await response.json();
             
             // Process and filter tokens
@@ -113,33 +126,6 @@ class TokenDiscovery {
             this.newListings = [...newTokens, ...this.newListings]
                 .slice(0, 50); // Keep only top 50 new listings
             console.log(`Found ${newTokens.length} new token listings`);
-        }
-    }
-
-    async detectNewListings() {
-        try {
-            const response = await fetch(`${BIRDEYE_API}/pairs/created/last24h`, {
-                headers: { 'x-chain': 'solana' }
-            });
-            const data = await response.json();
-            
-            // Process new pairs and add to newListings if they meet criteria
-            const newPairs = data.data
-                .filter(pair => 
-                    pair.liquidity >= this.minLiquidity &&
-                    !this.knownTokens.has(pair.tokenAddress)
-                )
-                .map(pair => ({
-                    address: pair.tokenAddress,
-                    symbol: pair.symbol,
-                    name: pair.name,
-                    liquidity: pair.liquidity,
-                    createdAt: pair.createdAt
-                }));
-
-            this.processNewListings(newPairs);
-        } catch (error) {
-            console.error('Failed to detect new listings:', error);
         }
     }
 
@@ -211,9 +197,12 @@ window.tokenDiscovery = new TokenDiscovery();
 
 // Function to select token for trading
 function selectToken(address) {
-    document.getElementById('token-address').value = address;
-    // Trigger any necessary updates
-    if (window.updateTokenInfo) {
-        window.updateTokenInfo(address);
+    const tokenInput = document.getElementById('token-address');
+    if (tokenInput) {
+        tokenInput.value = address;
+        // Trigger any necessary updates
+        if (window.updateTokenInfo) {
+            window.updateTokenInfo(address);
+        }
     }
 }

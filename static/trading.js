@@ -1,327 +1,9 @@
-// Constants
-const JUPITER_API = 'https://quote-api.jup.ag/v6';
-const BIRDEYE_API = 'https://public-api.birdeye.so/public';
-const RPC_ENDPOINT = 'https://api.mainnet-beta.solana.com';
-const SOL_MINT = 'So11111111111111111111111111111111111111112';
+// Trading Logic
+const { JUPITER_API, BIRDEYE_API, RPC_ENDPOINT, SOL_MINT } = window.CONSTANTS || {};
 
-// Global state
-let wallet = null;
-let connection = null;
-let isTrading = false;
-let tradingInterval = null;
-let currentTokenData = null;
-
-// Trading settings
-const settings = {
-    checkInterval: 30000, // Check price every 30 seconds
-    buyThreshold: 5, // Buy if price increases by 5% in last minute
-    sellThreshold: -3, // Sell if price drops by 3%
-    maxSlippage: 5, // Maximum slippage tolerance
-    tradeSize: 0.1, // Trade size in SOL
-    stopLoss: -10, // Stop loss percentage
-    takeProfit: 20, // Take profit percentage
-    maxActiveTokens: 3, // Maximum number of tokens to trade simultaneously
-    minLiquidity: 10000, // Minimum liquidity in USD
-};
-
-// Price tracking
-const priceTracking = {
-    tokens: new Map(), // Map of token address to price data
-    entryPrices: new Map(), // Entry prices for active trades
-};
-
-// Initialize Solana connection
-async function initConnection() {
-    try {
-        connection = new solanaWeb3.Connection(RPC_ENDPOINT);
-        console.log('✓ Connected to Solana');
-        return true;
-    } catch (error) {
-        console.error('Failed to connect to Solana:', error);
-        return false;
-    }
+if (!JUPITER_API || !RPC_ENDPOINT || !SOL_MINT) {
+    console.error('Required constants are not defined. Make sure constants are loaded before this script.');
 }
-
-// Connect wallet
-async function connectWallet() {
-    try {
-        if (window.solana && window.solana.isPhantom) {
-            const response = await window.solana.connect();
-            wallet = response.publicKey;
-            document.getElementById('wallet-status').textContent = 
-                `Wallet: ${wallet.toString().slice(0, 4)}...${wallet.toString().slice(-4)}`;
-            document.getElementById('start-bot').disabled = false;
-            console.log('✓ Wallet connected:', wallet.toString());
-            return true;
-        } else {
-            alert('Please install Phantom wallet!');
-            return false;
-        }
-    } catch (error) {
-        console.error('Failed to connect wallet:', error);
-        return false;
-    }
-}
-
-// Get token price and info
-async function getTokenInfo(tokenAddress) {
-    try {
-        const response = await fetch(`${BIRDEYE_API}/token_info?address=${tokenAddress}`, {
-            headers: { 'x-chain': 'solana' }
-        });
-        const data = await response.json();
-        return data.data;
-    } catch (error) {
-        console.error('Failed to get token info:', error);
-        throw error;
-    }
-}
-
-// Get quote for token swap
-async function getQuote(inputMint, outputMint, amount, slippage) {
-    try {
-        const params = new URLSearchParams({
-            inputMint,
-            outputMint,
-            amount,
-            slippageBps: slippage * 100,
-            feeBps: 0,
-            onlyDirectRoutes: false,
-            asLegacyTransaction: false
-        });
-
-        const response = await fetch(`${JUPITER_API}/quote?${params}`);
-        if (!response.ok) throw new Error('Quote request failed');
-        
-        return await response.json();
-    } catch (error) {
-        console.error('Failed to get quote:', error);
-        throw error;
-    }
-}
-
-// Execute token swap
-async function executeSwap(route) {
-    try {
-        const swapResponse = await fetch(`${JUPITER_API}/swap`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                route,
-                userPublicKey: wallet.toString(),
-                wrapUnwrapSOL: true,
-                asLegacyTransaction: false
-            })
-        });
-
-        if (!swapResponse.ok) throw new Error('Swap request failed');
-        
-        const swapResult = await swapResponse.json();
-        const { swapTransaction } = swapResult;
-
-        // Sign and send transaction
-        const tx = solanaWeb3.Transaction.from(Buffer.from(swapTransaction, 'base64'));
-        const signature = await window.solana.signAndSendTransaction(tx);
-        
-        // Add trade to history
-        addTradeToHistory({
-            type: route.inputMint === SOL_MINT ? 'BUY' : 'SELL',
-            amount: route.amount,
-            signature,
-            tokenAddress: route.inputMint === SOL_MINT ? route.outputMint : route.inputMint
-        });
-
-        return signature;
-    } catch (error) {
-        console.error('Failed to execute swap:', error);
-        throw error;
-    }
-}
-
-// Add trade to history
-function addTradeToHistory(trade) {
-    const tradesList = document.getElementById('trades-list');
-    const tradeItem = document.createElement('div');
-    tradeItem.className = 'trade-item';
-    
-    // Get token info if available
-    const tokenInfo = window.tokenDiscovery?.trendingTokens.find(t => t.address === trade.tokenAddress);
-    const tokenSymbol = tokenInfo ? tokenInfo.symbol : 'TOKEN';
-
-    tradeItem.innerHTML = `
-        <div>${trade.type} ${trade.amount} ${trade.type === 'BUY' ? 'SOL → ' + tokenSymbol : tokenSymbol + ' → SOL'}</div>
-        <div><a href="https://solscan.io/tx/${trade.signature}" target="_blank">View on Solscan</a></div>
-        <div>Time: ${new Date().toLocaleTimeString()}</div>
-    `;
-    tradesList.insertBefore(tradeItem, tradesList.firstChild);
-}
-
-// Update token price data
-async function updateTokenPrice(tokenAddress) {
-    try {
-        const price = await getTokenInfo(tokenAddress);
-        const priceData = priceTracking.tokens.get(tokenAddress) || {
-            prices: [],
-            lastUpdate: 0
-        };
-
-        priceData.prices.push({
-            price: price.value,
-            timestamp: Date.now()
-        });
-
-        // Keep only last hour of price data
-        const oneHourAgo = Date.now() - 3600000;
-        priceData.prices = priceData.prices.filter(p => p.timestamp > oneHourAgo);
-        priceTracking.tokens.set(tokenAddress, priceData);
-
-        return price.value;
-    } catch (error) {
-        console.error('Failed to update token price:', error);
-        throw error;
-    }
-}
-
-// Check if token meets trading criteria
-function meetsTradeConditions(tokenAddress) {
-    const priceData = priceTracking.tokens.get(tokenAddress);
-    if (!priceData || priceData.prices.length < 2) return false;
-
-    const latestPrice = priceData.prices[priceData.prices.length - 1].price;
-    const oldestPrice = priceData.prices[0].price;
-    const priceChange = ((latestPrice - oldestPrice) / oldestPrice) * 100;
-
-    // Check if we have an active position
-    const entryPrice = priceTracking.entryPrices.get(tokenAddress);
-    if (entryPrice) {
-        // Check stop loss and take profit
-        const currentReturn = ((latestPrice - entryPrice) / entryPrice) * 100;
-        if (currentReturn <= settings.stopLoss || currentReturn >= settings.takeProfit) {
-            return 'SELL';
-        }
-    } else if (priceChange >= settings.buyThreshold) {
-        return 'BUY';
-    }
-
-    return false;
-}
-
-// Main trading logic
-async function checkAndTrade() {
-    try {
-        // Get trending tokens from discovery
-        const trendingTokens = window.tokenDiscovery?.getTopTokens('trending', 5) || [];
-        const newTokens = window.tokenDiscovery?.getTopTokens('new', 5) || [];
-        
-        // Combine and filter tokens
-        const potentialTokens = [...trendingTokens, ...newTokens]
-            .filter(token => token.liquidity >= settings.minLiquidity);
-
-        // Update prices for all potential tokens
-        for (const token of potentialTokens) {
-            await updateTokenPrice(token.address);
-            
-            // Check trading conditions
-            const action = meetsTradeConditions(token.address);
-            
-            if (action === 'BUY' && priceTracking.entryPrices.size < settings.maxActiveTokens) {
-                // Execute buy
-                const quote = await getQuote(
-                    SOL_MINT,
-                    token.address,
-                    settings.tradeSize * 1e9,
-                    settings.maxSlippage
-                );
-                const signature = await executeSwap(quote.data);
-                
-                // Record entry price
-                const currentPrice = priceTracking.tokens.get(token.address).prices.slice(-1)[0].price;
-                priceTracking.entryPrices.set(token.address, currentPrice);
-                
-                console.log(`🚀 Bought ${token.symbol || 'token'}: ${signature}`);
-            }
-            else if (action === 'SELL' && priceTracking.entryPrices.has(token.address)) {
-                // Execute sell
-                const quote = await getQuote(
-                    token.address,
-                    SOL_MINT,
-                    settings.tradeSize * 1e9,
-                    settings.maxSlippage
-                );
-                const signature = await executeSwap(quote.data);
-                
-                // Remove entry price
-                priceTracking.entryPrices.delete(token.address);
-                
-                console.log(`🔻 Sold ${token.symbol || 'token'}: ${signature}`);
-            }
-        }
-    } catch (error) {
-        console.error('Trading error:', error);
-        document.getElementById('error-message').textContent = `Error: ${error.message}`;
-    }
-}
-
-// Start/Stop trading
-function toggleTrading() {
-    if (!isTrading) {
-        // Start trading
-        isTrading = true;
-        document.getElementById('start-bot').textContent = 'Stop Bot';
-        document.getElementById('bot-status').textContent = 'Bot: Running 🟢';
-        
-        // Initialize token discovery if not already done
-        if (window.tokenDiscovery && !window.tokenDiscovery.lastScanTime) {
-            window.tokenDiscovery.initialize();
-        }
-        
-        // Initial check
-        checkAndTrade();
-        
-        // Set up interval for regular checks
-        tradingInterval = setInterval(checkAndTrade, settings.checkInterval);
-    } else {
-        // Stop trading
-        isTrading = false;
-        clearInterval(tradingInterval);
-        document.getElementById('start-bot').textContent = 'Start Bot';
-        document.getElementById('bot-status').textContent = 'Bot: Stopped 🔴';
-    }
-}
-
-// Update settings from UI
-function updateSettings() {
-    const elements = {
-        tradeSize: document.getElementById('trade-size'),
-        buyThreshold: document.getElementById('buy-threshold'),
-        sellThreshold: document.getElementById('sell-threshold'),
-        stopLoss: document.getElementById('stop-loss'),
-        takeProfit: document.getElementById('take-profit')
-    };
-
-    settings.tradeSize = parseFloat(elements.tradeSize.value) || settings.tradeSize;
-    settings.buyThreshold = parseFloat(elements.buyThreshold.value) || settings.buyThreshold;
-    settings.sellThreshold = parseFloat(elements.sellThreshold.value) || settings.sellThreshold;
-    settings.stopLoss = parseFloat(elements.stopLoss.value) || settings.stopLoss;
-    settings.takeProfit = parseFloat(elements.takeProfit.value) || settings.takeProfit;
-}
-
-// Initialize app
-async function init() {
-    if (await initConnection()) {
-        // Add event listeners
-        document.getElementById('connect-wallet').addEventListener('click', connectWallet);
-        document.getElementById('start-bot').addEventListener('click', toggleTrading);
-        
-        // Add settings listeners
-        document.querySelectorAll('.settings input').forEach(input => {
-            input.addEventListener('change', updateSettings);
-        });
-    }
-}
-
-// Start the app
-init();
 
 class TradingBot {
     constructor() {
@@ -332,18 +14,34 @@ class TradingBot {
         this.entryPrice = null;
         this.lastPrice = null;
         this.tradeHistory = [];
+        
+        // Trading settings
         this.settings = {
-            tradeSize: 0.1,
-            buyThreshold: 5,
-            sellThreshold: -3,
-            stopLoss: -10,
-            takeProfit: 20
+            checkInterval: 30000, // Check price every 30 seconds
+            buyThreshold: 5, // Buy if price increases by 5%
+            sellThreshold: -3, // Sell if price drops by 3%
+            maxSlippage: 5, // Maximum slippage tolerance
+            tradeSize: 0.1, // Trade size in SOL
+            stopLoss: -10, // Stop loss percentage
+            takeProfit: 20, // Take profit percentage
+            maxActiveTokens: 3 // Maximum number of tokens to trade simultaneously
+        };
+
+        // Price tracking
+        this.priceTracking = {
+            tokens: new Map(), // Map of token address to price data
+            entryPrices: new Map() // Entry prices for active trades
         };
     }
 
     async initialize() {
         try {
-            this.connection = new solanaWeb3.Connection(RPC_ENDPOINT);
+            if (!window.solanaWeb3) {
+                console.error('Solana Web3 not loaded');
+                return;
+            }
+            
+            this.connection = new window.solanaWeb3.Connection(RPC_ENDPOINT);
             console.log('Connected to Solana network');
             this.loadSettings();
             this.setupEventListeners();
@@ -409,7 +107,8 @@ class TradingBot {
             console.log('Wallet connected:', this.wallet.toString());
             
             // Update UI
-            document.getElementById('wallet-status').textContent = 'Wallet: Connected';
+            document.getElementById('wallet-status').textContent = 
+                `Wallet: ${this.wallet.toString().slice(0, 4)}...${this.wallet.toString().slice(-4)}`;
             document.getElementById('start-bot').disabled = false;
             
         } catch (error) {
@@ -440,7 +139,7 @@ class TradingBot {
         while (this.isRunning) {
             try {
                 await this.checkPriceAndTrade();
-                await new Promise(resolve => setTimeout(resolve, 30000)); // Check every 30 seconds
+                await new Promise(resolve => setTimeout(resolve, this.settings.checkInterval));
             } catch (error) {
                 console.error('Error in monitoring loop:', error);
             }
@@ -477,6 +176,11 @@ class TradingBot {
     }
 
     async getTokenPrice(tokenAddress) {
+        if (!JUPITER_API) {
+            console.error('JUPITER_API constant is not defined');
+            return null;
+        }
+
         try {
             const response = await fetch(`${JUPITER_API}/price?ids=${tokenAddress}`);
             const data = await response.json();
@@ -582,6 +286,11 @@ class TradingBot {
     }
 
     async getJupiterQuote(inputMint, outputMint, amount) {
+        if (!JUPITER_API) {
+            console.error('JUPITER_API constant is not defined');
+            return null;
+        }
+
         try {
             const response = await fetch(`${JUPITER_API}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=50`);
             return await response.json();
@@ -608,7 +317,7 @@ class TradingBot {
     async getTokenBalance(tokenAddress) {
         try {
             const response = await this.connection.getTokenAccountsByOwner(this.wallet, {
-                mint: new solanaWeb3.PublicKey(tokenAddress)
+                mint: new window.solanaWeb3.PublicKey(tokenAddress)
             });
             if (response.value.length === 0) return 0;
             const balance = await this.connection.getTokenAccountBalance(response.value[0].pubkey);
@@ -650,6 +359,8 @@ class TradingBot {
     }
 }
 
-// Initialize trading bot
-window.tradingBot = new TradingBot();
-window.tradingBot.initialize();
+// Initialize trading bot after page load
+document.addEventListener('DOMContentLoaded', () => {
+    window.tradingBot = new TradingBot();
+    window.tradingBot.initialize();
+});

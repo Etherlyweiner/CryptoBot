@@ -235,11 +235,18 @@
     </div>
 
     <!-- Load Solana Web3 -->
-    <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.98.0/lib/index.iife.min.js"></script>
+    <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
     
-    <!-- Load Wallet Adapter -->
-    <script src="https://unpkg.com/@solana/wallet-adapter-base"></script>
-    <script src="https://unpkg.com/@solana/wallet-adapter-phantom"></script>
+    <!-- Initialize Constants -->
+    <script>
+        window.CONSTANTS = {
+            JUPITER_API: 'https://quote-api.jup.ag/v6',
+            BIRDEYE_API: 'https://public-api.birdeye.so/public',
+            RPC_ENDPOINT: 'https://api.mainnet-beta.solana.com',
+            SOL_MINT: 'So11111111111111111111111111111111111111112',
+            DEXSCREENER_API: 'https://api.dexscreener.com/latest/dex/tokens/solana'
+        };
+    </script>
 
     <!-- Our trading code -->
     <script src="token_discovery.js"></script>
