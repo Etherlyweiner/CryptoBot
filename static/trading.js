@@ -87,10 +87,11 @@ class TradingBot {
         // RPC connection options
         this.rpcOptions = {
             commitment: 'confirmed',
-            disableRetryOnRateLimit: false,
+            wsEndpoint: '',
             httpHeaders: {
                 'Origin': window.location.origin
-            }
+            },
+            fetch: window.fetch
         };
     }
 
@@ -114,6 +115,7 @@ class TradingBot {
         for (let i = 0; i < RPC_ENDPOINTS.length; i++) {
             try {
                 const endpoint = RPC_ENDPOINTS[i];
+                this.rpcOptions.wsEndpoint = endpoint.replace('https://', 'wss://');
                 this.connection = new window.solanaWeb3.Connection(endpoint, this.rpcOptions);
                 
                 // Test the connection with retries
@@ -142,6 +144,7 @@ class TradingBot {
         const nextIndex = (this.currentRpcIndex + 1) % RPC_ENDPOINTS.length;
         try {
             const endpoint = RPC_ENDPOINTS[nextIndex];
+            this.rpcOptions.wsEndpoint = endpoint.replace('https://', 'wss://');
             this.connection = new window.solanaWeb3.Connection(endpoint, this.rpcOptions);
             
             // Test the connection
