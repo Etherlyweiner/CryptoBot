@@ -5,6 +5,56 @@ if (!JUPITER_API || !RPC_ENDPOINT || !SOL_MINT) {
     console.error('Required constants are not defined. Make sure constants are loaded before this script.');
 }
 
+// Trading bot logger
+class Logger {
+    static log(type, message, data = null) {
+        const timestamp = new Date().toISOString();
+        const logEntry = {
+            timestamp,
+            type,
+            message,
+            data
+        };
+        
+        // Log to console with color
+        const colors = {
+            INFO: '#4CAF50',
+            ERROR: '#f44336',
+            TRADE: '#2196F3',
+            PRICE: '#FF9800'
+        };
+        
+        console.log(
+            `%c[${type}] ${timestamp}\n${message}`,
+            `color: ${colors[type] || '#fff'}`,
+            data ? data : ''
+        );
+
+        // Store in log history
+        if (!window.botLogs) window.botLogs = [];
+        window.botLogs.push(logEntry);
+        
+        // Update UI if log container exists
+        const logContainer = document.getElementById('bot-logs');
+        if (logContainer) {
+            const logElement = document.createElement('div');
+            logElement.className = `log-entry ${type.toLowerCase()}`;
+            logElement.innerHTML = `
+                <span class="timestamp">${new Date(timestamp).toLocaleTimeString()}</span>
+                <span class="type">${type}</span>
+                <span class="message">${message}</span>
+                ${data ? `<pre class="data">${JSON.stringify(data, null, 2)}</pre>` : ''}
+            `;
+            logContainer.insertBefore(logElement, logContainer.firstChild);
+            
+            // Keep only last 100 logs in UI
+            if (logContainer.children.length > 100) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        }
+    }
+}
+
 class TradingBot {
     constructor() {
         this.isRunning = false;
@@ -17,41 +67,42 @@ class TradingBot {
         
         // Trading settings
         this.settings = {
-            checkInterval: 30000, // Check price every 30 seconds
-            buyThreshold: 5, // Buy if price increases by 5%
-            sellThreshold: -3, // Sell if price drops by 3%
-            maxSlippage: 5, // Maximum slippage tolerance
-            tradeSize: 0.1, // Trade size in SOL
-            stopLoss: -10, // Stop loss percentage
-            takeProfit: 20, // Take profit percentage
-            maxActiveTokens: 3 // Maximum number of tokens to trade simultaneously
+            checkInterval: 30000,
+            buyThreshold: 5,
+            sellThreshold: -3,
+            maxSlippage: 5,
+            tradeSize: 0.1,
+            stopLoss: -10,
+            takeProfit: 20,
+            maxActiveTokens: 3
         };
 
         // Price tracking
         this.priceTracking = {
-            tokens: new Map(), // Map of token address to price data
-            entryPrices: new Map() // Entry prices for active trades
+            tokens: new Map(),
+            entryPrices: new Map()
         };
     }
 
     async initialize() {
         try {
             if (!window.solanaWeb3) {
-                console.error('Solana Web3 not loaded');
+                Logger.log('ERROR', 'Solana Web3 not loaded');
                 return;
             }
             
             this.connection = new window.solanaWeb3.Connection(RPC_ENDPOINT);
-            console.log('Connected to Solana network');
+            Logger.log('INFO', 'Connected to Solana network', { endpoint: RPC_ENDPOINT });
+            
             this.loadSettings();
             this.setupEventListeners();
+            Logger.log('INFO', 'Trading bot initialized', this.settings);
         } catch (error) {
-            console.error('Failed to initialize trading bot:', error);
+            Logger.log('ERROR', 'Failed to initialize trading bot', error);
         }
     }
 
     loadSettings() {
-        // Load settings from UI
         const elements = ['trade-size', 'buy-threshold', 'sell-threshold', 'stop-loss', 'take-profit'];
         elements.forEach(id => {
             const element = document.getElementById(id);
@@ -60,40 +111,7 @@ class TradingBot {
                 this.settings[key] = parseFloat(element.value);
             }
         });
-    }
-
-    setupEventListeners() {
-        // Connect wallet button
-        const connectButton = document.getElementById('connect-wallet');
-        if (connectButton) {
-            connectButton.addEventListener('click', () => this.connectWallet());
-        }
-
-        // Start/Stop bot button
-        const startButton = document.getElementById('start-bot');
-        if (startButton) {
-            startButton.addEventListener('click', () => {
-                if (this.isRunning) {
-                    this.stop();
-                    startButton.textContent = 'Start Bot';
-                } else {
-                    this.start();
-                    startButton.textContent = 'Stop Bot';
-                }
-            });
-        }
-
-        // Settings inputs
-        const elements = ['trade-size', 'buy-threshold', 'sell-threshold', 'stop-loss', 'take-profit'];
-        elements.forEach(id => {
-            const element = document.getElementById(id);
-            if (element) {
-                element.addEventListener('change', () => {
-                    const key = id.replace(/-./g, x => x[1].toUpperCase());
-                    this.settings[key] = parseFloat(element.value);
-                });
-            }
-        });
+        Logger.log('INFO', 'Settings loaded', this.settings);
     }
 
     async connectWallet() {
@@ -104,27 +122,43 @@ class TradingBot {
 
             const resp = await window.solana.connect();
             this.wallet = resp.publicKey;
-            console.log('Wallet connected:', this.wallet.toString());
+            Logger.log('INFO', 'Wallet connected', {
+                address: this.wallet.toString(),
+                balance: await this.getSOLBalance()
+            });
             
-            // Update UI
             document.getElementById('wallet-status').textContent = 
                 `Wallet: ${this.wallet.toString().slice(0, 4)}...${this.wallet.toString().slice(-4)}`;
             document.getElementById('start-bot').disabled = false;
             
         } catch (error) {
-            console.error('Failed to connect wallet:', error);
+            Logger.log('ERROR', 'Failed to connect wallet', error);
             document.getElementById('wallet-status').textContent = 'Wallet: Error';
+        }
+    }
+
+    async getSOLBalance() {
+        try {
+            const balance = await this.connection.getBalance(this.wallet);
+            return balance / 1e9; // Convert lamports to SOL
+        } catch (error) {
+            Logger.log('ERROR', 'Failed to get SOL balance', error);
+            return 0;
         }
     }
 
     async start() {
         if (!this.wallet) {
-            console.error('Please connect wallet first');
+            Logger.log('ERROR', 'Please connect wallet first');
             return;
         }
 
         this.isRunning = true;
         document.getElementById('bot-status').textContent = 'Bot: Running';
+        Logger.log('INFO', 'Trading bot started', {
+            wallet: this.wallet.toString(),
+            settings: this.settings
+        });
         
         // Start monitoring loop
         this.monitoringLoop();
@@ -133,6 +167,7 @@ class TradingBot {
     stop() {
         this.isRunning = false;
         document.getElementById('bot-status').textContent = 'Bot: Stopped';
+        Logger.log('INFO', 'Trading bot stopped');
     }
 
     async monitoringLoop() {
@@ -141,7 +176,7 @@ class TradingBot {
                 await this.checkPriceAndTrade();
                 await new Promise(resolve => setTimeout(resolve, this.settings.checkInterval));
             } catch (error) {
-                console.error('Error in monitoring loop:', error);
+                Logger.log('ERROR', 'Error in monitoring loop', error);
             }
         }
     }
@@ -151,33 +186,41 @@ class TradingBot {
         if (!tokenAddress) return;
 
         try {
-            // Get current price from Jupiter
             const price = await this.getTokenPrice(tokenAddress);
             if (!price) return;
 
+            Logger.log('PRICE', `Token ${tokenAddress} price: ${price} SOL`);
             this.lastPrice = price;
 
-            // If we don't have a position, check for buy opportunity
             if (!this.currentToken) {
                 if (this.shouldBuy(price)) {
+                    Logger.log('TRADE', 'Buy signal detected', {
+                        token: tokenAddress,
+                        price,
+                        reason: 'Price increase above threshold'
+                    });
                     await this.executeBuy(tokenAddress, price);
                 }
-            }
-            // If we have a position, check for sell conditions
-            else if (this.currentToken === tokenAddress) {
+            } else if (this.currentToken === tokenAddress) {
                 if (this.shouldSell(price)) {
+                    Logger.log('TRADE', 'Sell signal detected', {
+                        token: tokenAddress,
+                        price,
+                        entryPrice: this.entryPrice,
+                        profit: ((price - this.entryPrice) / this.entryPrice) * 100
+                    });
                     await this.executeSell(tokenAddress, price);
                 }
             }
 
         } catch (error) {
-            console.error('Error checking price and trading:', error);
+            Logger.log('ERROR', 'Error checking price and trading', error);
         }
     }
 
     async getTokenPrice(tokenAddress) {
         if (!JUPITER_API) {
-            console.error('JUPITER_API constant is not defined');
+            Logger.log('ERROR', 'JUPITER_API constant is not defined');
             return null;
         }
 
@@ -186,7 +229,7 @@ class TradingBot {
             const data = await response.json();
             return parseFloat(data.data[tokenAddress].price);
         } catch (error) {
-            console.error('Error getting token price:', error);
+            Logger.log('ERROR', 'Error getting token price', error);
             return null;
         }
     }
@@ -194,7 +237,18 @@ class TradingBot {
     shouldBuy(currentPrice) {
         if (!this.lastPrice) return false;
         const priceChange = ((currentPrice - this.lastPrice) / this.lastPrice) * 100;
-        return priceChange >= this.settings.buyThreshold;
+        const shouldBuy = priceChange >= this.settings.buyThreshold;
+        
+        if (shouldBuy) {
+            Logger.log('INFO', 'Buy condition met', {
+                currentPrice,
+                lastPrice: this.lastPrice,
+                priceChange,
+                threshold: this.settings.buyThreshold
+            });
+        }
+        
+        return shouldBuy;
     }
 
     shouldSell(currentPrice) {
@@ -204,19 +258,31 @@ class TradingBot {
         
         // Check stop loss
         if (priceChange <= this.settings.stopLoss) {
-            console.log('Stop loss triggered');
+            Logger.log('TRADE', 'Stop loss triggered', {
+                currentPrice,
+                entryPrice: this.entryPrice,
+                loss: priceChange
+            });
             return true;
         }
         
         // Check take profit
         if (priceChange >= this.settings.takeProfit) {
-            console.log('Take profit triggered');
+            Logger.log('TRADE', 'Take profit triggered', {
+                currentPrice,
+                entryPrice: this.entryPrice,
+                profit: priceChange
+            });
             return true;
         }
         
         // Check sell threshold
         if (priceChange <= this.settings.sellThreshold) {
-            console.log('Sell threshold triggered');
+            Logger.log('TRADE', 'Sell threshold triggered', {
+                currentPrice,
+                entryPrice: this.entryPrice,
+                priceChange
+            });
             return true;
         }
         
@@ -226,6 +292,11 @@ class TradingBot {
     async executeBuy(tokenAddress, price) {
         try {
             const amountInSol = this.settings.tradeSize;
+            Logger.log('TRADE', 'Executing buy order', {
+                token: tokenAddress,
+                amount: amountInSol,
+                price
+            });
             
             // Get Jupiter quote
             const quote = await this.getJupiterQuote(SOL_MINT, tokenAddress, amountInSol);
@@ -239,6 +310,13 @@ class TradingBot {
             this.currentToken = tokenAddress;
             this.entryPrice = price;
 
+            Logger.log('TRADE', 'Buy order executed', {
+                token: tokenAddress,
+                amount: amountInSol,
+                price,
+                txid
+            });
+
             // Log trade
             this.logTrade({
                 type: 'BUY',
@@ -249,7 +327,7 @@ class TradingBot {
             });
 
         } catch (error) {
-            console.error('Error executing buy:', error);
+            Logger.log('ERROR', 'Error executing buy', error);
         }
     }
 
@@ -258,6 +336,12 @@ class TradingBot {
             // Get token balance
             const balance = await this.getTokenBalance(tokenAddress);
             if (!balance) return;
+
+            Logger.log('TRADE', 'Executing sell order', {
+                token: tokenAddress,
+                balance,
+                price
+            });
 
             // Get Jupiter quote
             const quote = await this.getJupiterQuote(tokenAddress, SOL_MINT, balance);
@@ -271,6 +355,13 @@ class TradingBot {
             this.currentToken = null;
             this.entryPrice = null;
 
+            Logger.log('TRADE', 'Sell order executed', {
+                token: tokenAddress,
+                amount: balance,
+                price,
+                txid
+            });
+
             // Log trade
             this.logTrade({
                 type: 'SELL',
@@ -281,21 +372,23 @@ class TradingBot {
             });
 
         } catch (error) {
-            console.error('Error executing sell:', error);
+            Logger.log('ERROR', 'Error executing sell', error);
         }
     }
 
     async getJupiterQuote(inputMint, outputMint, amount) {
         if (!JUPITER_API) {
-            console.error('JUPITER_API constant is not defined');
+            Logger.log('ERROR', 'JUPITER_API constant is not defined');
             return null;
         }
 
         try {
             const response = await fetch(`${JUPITER_API}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=50`);
-            return await response.json();
+            const quote = await response.json();
+            Logger.log('INFO', 'Got Jupiter quote', quote);
+            return quote;
         } catch (error) {
-            console.error('Error getting Jupiter quote:', error);
+            Logger.log('ERROR', 'Error getting Jupiter quote', error);
             return null;
         }
     }
@@ -307,9 +400,10 @@ class TradingBot {
             const signedTx = await window.solana.signTransaction(tx);
             const txid = await this.connection.sendRawTransaction(signedTx.serialize());
             await this.connection.confirmTransaction(txid);
+            Logger.log('INFO', 'Jupiter swap executed', { txid });
             return txid;
         } catch (error) {
-            console.error('Error executing Jupiter swap:', error);
+            Logger.log('ERROR', 'Error executing Jupiter swap', error);
             return null;
         }
     }
@@ -321,9 +415,13 @@ class TradingBot {
             });
             if (response.value.length === 0) return 0;
             const balance = await this.connection.getTokenAccountBalance(response.value[0].pubkey);
+            Logger.log('INFO', 'Got token balance', {
+                token: tokenAddress,
+                balance: balance.value.amount
+            });
             return parseFloat(balance.value.amount);
         } catch (error) {
-            console.error('Error getting token balance:', error);
+            Logger.log('ERROR', 'Error getting token balance', error);
             return 0;
         }
     }
@@ -334,7 +432,7 @@ class TradingBot {
             timestamp: new Date().toISOString()
         });
 
-        // Update UI
+        Logger.log('TRADE', `${trade.type} trade logged`, trade);
         this.updateTradeHistory();
     }
 

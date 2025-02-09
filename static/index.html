@@ -170,6 +170,71 @@
             margin: 15px 0 10px 0;
             color: var(--primary);
         }
+
+        #bot-logs {
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            background: var(--bg);
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 10px;
+        }
+
+        .log-entry {
+            padding: 5px;
+            border-bottom: 1px solid #333;
+            white-space: pre-wrap;
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-entry .timestamp {
+            color: #888;
+            margin-right: 10px;
+        }
+
+        .log-entry .type {
+            font-weight: bold;
+            margin-right: 10px;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+
+        .log-entry.info .type {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .log-entry.error .type {
+            background: #f44336;
+            color: white;
+        }
+
+        .log-entry.trade .type {
+            background: #2196F3;
+            color: white;
+        }
+
+        .log-entry.price .type {
+            background: #FF9800;
+            color: white;
+        }
+
+        .log-entry .message {
+            color: var(--text);
+        }
+
+        .log-entry .data {
+            color: #888;
+            margin-top: 5px;
+            margin-left: 20px;
+            font-size: 11px;
+        }
     </style>
 </head>
 <body>
@@ -222,6 +287,11 @@
         </div>
 
         <div class="main-content">
+            <div class="card">
+                <h2>Bot Activity</h2>
+                <div id="bot-logs"></div>
+            </div>
+
             <div class="card">
                 <h2>Token Discovery</h2>
                 <div id="discovered-tokens" class="token-list">
