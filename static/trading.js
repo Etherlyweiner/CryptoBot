@@ -1,5 +1,5 @@
 // Trading Logic
-const { JUPITER_API, BIRDEYE_API, RPC_ENDPOINT, SOL_MINT } = window.CONSTANTS || {};
+const { JUPITER_API, RPC_ENDPOINT, SOL_MINT } = window.CONSTANTS || {};
 
 if (!JUPITER_API || !RPC_ENDPOINT || !SOL_MINT) {
     console.error('Required constants are not defined. Make sure constants are loaded before this script.');
