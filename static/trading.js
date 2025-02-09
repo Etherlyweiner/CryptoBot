@@ -114,6 +114,43 @@ class TradingBot {
         Logger.log('INFO', 'Settings loaded', this.settings);
     }
 
+    setupEventListeners() {
+        // Connect wallet button
+        const connectButton = document.getElementById('connect-wallet');
+        if (connectButton) {
+            connectButton.addEventListener('click', () => this.connectWallet());
+        }
+
+        // Start/Stop bot button
+        const startButton = document.getElementById('start-bot');
+        if (startButton) {
+            startButton.addEventListener('click', () => {
+                if (this.isRunning) {
+                    this.stop();
+                    startButton.textContent = 'Start Bot';
+                } else {
+                    this.start();
+                    startButton.textContent = 'Stop Bot';
+                }
+            });
+        }
+
+        // Settings inputs
+        const elements = ['trade-size', 'buy-threshold', 'sell-threshold', 'stop-loss', 'take-profit'];
+        elements.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.addEventListener('change', () => {
+                    const key = id.replace(/-./g, x => x[1].toUpperCase());
+                    this.settings[key] = parseFloat(element.value);
+                    Logger.log('INFO', 'Setting updated', { [key]: this.settings[key] });
+                });
+            }
+        });
+
+        Logger.log('INFO', 'Event listeners set up');
+    }
+
     async connectWallet() {
         try {
             if (!window.solana || !window.solana.isPhantom) {
