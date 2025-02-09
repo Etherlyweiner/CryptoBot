@@ -83,6 +83,15 @@ class TradingBot {
             tokens: new Map(),
             entryPrices: new Map()
         };
+
+        // RPC connection options
+        this.rpcOptions = {
+            commitment: 'confirmed',
+            disableRetryOnRateLimit: false,
+            httpHeaders: {
+                'Origin': window.location.origin
+            }
+        };
     }
 
     async initialize() {
@@ -105,14 +114,22 @@ class TradingBot {
         for (let i = 0; i < RPC_ENDPOINTS.length; i++) {
             try {
                 const endpoint = RPC_ENDPOINTS[i];
-                this.connection = new window.solanaWeb3.Connection(endpoint);
+                this.connection = new window.solanaWeb3.Connection(endpoint, this.rpcOptions);
                 
-                // Test the connection
-                await this.connection.getSlot();
-                
-                this.currentRpcIndex = i;
-                Logger.log('INFO', 'Connected to Solana network', { endpoint });
-                return;
+                // Test the connection with retries
+                let retries = 3;
+                while (retries > 0) {
+                    try {
+                        await this.connection.getSlot();
+                        this.currentRpcIndex = i;
+                        Logger.log('INFO', 'Connected to Solana network', { endpoint });
+                        return;
+                    } catch (error) {
+                        retries--;
+                        if (retries === 0) throw error;
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+                }
             } catch (error) {
                 Logger.log('ERROR', `Failed to connect to RPC endpoint: ${RPC_ENDPOINTS[i]}`, error);
                 continue;
@@ -125,7 +142,7 @@ class TradingBot {
         const nextIndex = (this.currentRpcIndex + 1) % RPC_ENDPOINTS.length;
         try {
             const endpoint = RPC_ENDPOINTS[nextIndex];
-            this.connection = new window.solanaWeb3.Connection(endpoint);
+            this.connection = new window.solanaWeb3.Connection(endpoint, this.rpcOptions);
             
             // Test the connection
             await this.connection.getSlot();
