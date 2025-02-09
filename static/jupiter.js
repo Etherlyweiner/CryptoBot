@@ -1,15 +1,15 @@
-// Jupiter DEX integration
+// Jupiter DEX integration using REST API
 class JupiterDEX {
     constructor() {
         console.log('Jupiter instance created');
         this.initialized = false;
         this.connection = null;
-        this.jupiter = null;
         this.initPromise = null;
+        this.tokenList = null;
     }
 
     async waitForDependencies() {
-        const maxAttempts = 30; // Increased from 20
+        const maxAttempts = 30;
         const waitTime = 500;
         let attempts = 0;
 
@@ -25,27 +25,20 @@ class JupiterDEX {
 
         attempts = 0;
         while (attempts < maxAttempts) {
-            const deps = window.CryptoBot.dependencies;
-            if (deps.solanaWeb3 && deps.jupiterAg) {
-                console.log('All dependencies loaded successfully');
+            if (window.solanaWeb3) {
+                console.log('✓ All dependencies loaded successfully');
                 return true;
             }
 
             // Log missing dependencies
-            if (!deps.solanaWeb3) console.log('Waiting for Solana Web3...');
-            if (!deps.jupiterAg) console.log('Waiting for Jupiter SDK...');
+            if (!window.solanaWeb3) console.log('Waiting for Solana Web3...');
             
             await new Promise(resolve => setTimeout(resolve, waitTime));
             attempts++;
             console.log(`Dependency check attempt ${attempts}/${maxAttempts}`);
         }
 
-        const missing = [];
-        const deps = window.CryptoBot.dependencies;
-        if (!deps.solanaWeb3) missing.push('Solana Web3');
-        if (!deps.jupiterAg) missing.push('Jupiter SDK');
-        
-        throw new Error(`Failed to load dependencies: ${missing.join(', ')}`);
+        throw new Error('Failed to load dependencies: Solana Web3');
     }
 
     async initialize() {
@@ -61,19 +54,15 @@ class JupiterDEX {
                 await this.waitForDependencies();
 
                 // Initialize Jupiter connection with fallback endpoints
-                const endpoints = [
-                    'https://api.mainnet-beta.solana.com',
-                    'https://solana-mainnet.rpc.extrnode.com',
-                    'https://api.metaplex.solana.com'
-                ];
+                const endpoints = window.CryptoBot.config.rpcEndpoints;
 
                 // Try each endpoint until one works
                 let connected = false;
                 for (const endpoint of endpoints) {
                     try {
                         this.connection = new window.solanaWeb3.Connection(endpoint);
-                        await this.connection.getVersion();
-                        console.log(`Connected to Solana endpoint: ${endpoint}`);
+                        const version = await this.connection.getVersion();
+                        console.log(`✓ Connected to Solana endpoint: ${endpoint}`, version);
                         connected = true;
                         break;
                     } catch (error) {
@@ -85,16 +74,11 @@ class JupiterDEX {
                     throw new Error('Failed to connect to any Solana endpoint');
                 }
 
-                // Initialize Jupiter with the latest SDK version
-                this.jupiter = await window.JupiterAg.Jupiter.load({
-                    connection: this.connection,
-                    cluster: 'mainnet-beta',
-                    env: 'mainnet-beta',
-                    defaultSlippageBps: 100 // 1%
-                });
+                // Load token list
+                await this.loadTokenList();
 
                 this.initialized = true;
-                console.log('Jupiter DEX initialized successfully');
+                console.log('✓ Jupiter DEX initialized successfully');
                 return true;
             } catch (error) {
                 console.error('Failed to initialize Jupiter:', error);
@@ -106,71 +90,95 @@ class JupiterDEX {
         return this.initPromise;
     }
 
-    async getQuote(inputMint, outputMint, amount, slippage = 1) {
+    async loadTokenList() {
+        try {
+            const response = await fetch('https://token.jup.ag/all');
+            this.tokenList = await response.json();
+            console.log(`✓ Loaded ${this.tokenList.length} tokens`);
+        } catch (error) {
+            console.error('Failed to load token list:', error);
+            throw error;
+        }
+    }
+
+    async getQuote(inputMint, outputMint, amount, slippage = null) {
         if (!this.initialized) {
-            throw new Error('Jupiter DEX not initialized');
+            await this.initialize();
         }
 
         try {
-            const routes = await this.jupiter.computeRoutes({
+            const slippageBps = slippage ? Math.floor(slippage * 100) : window.CryptoBot.config.defaultSlippage;
+            
+            // Build quote request URL
+            const params = new URLSearchParams({
                 inputMint,
                 outputMint,
                 amount,
-                slippageBps: slippage * 100,
-                forceFetch: true
+                slippageBps,
+                feeBps: 0,
+                onlyDirectRoutes: false,
+                asLegacyTransaction: false
             });
 
-            if (!routes || !routes.routesInfos || routes.routesInfos.length === 0) {
-                throw new Error('No routes found');
+            const response = await fetch(`${window.CryptoBot.config.jupiterApi}/quote?${params}`);
+            if (!response.ok) {
+                throw new Error(`Quote request failed: ${response.statusText}`);
             }
 
-            return routes.routesInfos[0];
+            const quote = await response.json();
+            return quote;
         } catch (error) {
             console.error('Failed to get quote:', error);
             throw error;
         }
     }
 
-    async executeSwap(wallet, route) {
+    async executeSwap(route, wallet) {
         if (!this.initialized) {
-            throw new Error('Jupiter DEX not initialized');
+            await this.initialize();
         }
 
         try {
-            const { transactions } = await this.jupiter.exchange({
-                routeInfo: route,
-                userPublicKey: wallet.publicKey,
-                wrapUnwrapSOL: true
+            // Get serialized transactions
+            const swapResponse = await fetch(`${window.CryptoBot.config.jupiterApi}/swap`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    route,
+                    userPublicKey: wallet.publicKey.toString(),
+                    wrapUnwrapSOL: true,
+                    asLegacyTransaction: false
+                })
             });
 
-            const { setupTransaction, swapTransaction, cleanupTransaction } = transactions;
+            if (!swapResponse.ok) {
+                throw new Error(`Swap request failed: ${swapResponse.statusText}`);
+            }
 
-            // Helper function to send and confirm transaction
-            const sendAndConfirm = async (transaction) => {
-                if (!transaction) return;
-                
-                try {
-                    const signedTx = await wallet.signTransaction(transaction);
-                    const txid = await this.connection.sendRawTransaction(signedTx.serialize());
-                    await this.connection.confirmTransaction(txid);
-                    console.log(`Transaction confirmed: ${txid}`);
-                    return txid;
-                } catch (error) {
-                    console.error('Transaction failed:', error);
-                    throw error;
-                }
-            };
+            const swapResult = await swapResponse.json();
+            const { swapTransaction } = swapResult;
 
-            // Execute transactions in sequence
-            if (setupTransaction) await sendAndConfirm(setupTransaction);
-            const swapTxid = await sendAndConfirm(swapTransaction);
-            if (cleanupTransaction) await sendAndConfirm(cleanupTransaction);
+            // Sign and send the transaction
+            const tx = window.solanaWeb3.Transaction.from(
+                Buffer.from(swapTransaction, 'base64')
+            );
 
-            return swapTxid;
+            const signature = await wallet.signAndSendTransaction(tx);
+            console.log('Swap executed successfully:', signature);
+            return signature;
         } catch (error) {
             console.error('Failed to execute swap:', error);
             throw error;
         }
+    }
+
+    async getTokenList() {
+        if (!this.tokenList) {
+            await this.loadTokenList();
+        }
+        return this.tokenList;
     }
 }
 
