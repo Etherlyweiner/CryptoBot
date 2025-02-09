@@ -1,7 +1,7 @@
 // Trading Logic
-const { JUPITER_API, RPC_ENDPOINT, SOL_MINT } = window.CONSTANTS || {};
+const { JUPITER_API, RPC_ENDPOINTS, SOL_MINT } = window.CONSTANTS || {};
 
-if (!JUPITER_API || !RPC_ENDPOINT || !SOL_MINT) {
+if (!JUPITER_API || !RPC_ENDPOINTS || !SOL_MINT) {
     console.error('Required constants are not defined. Make sure constants are loaded before this script.');
 }
 
@@ -59,6 +59,7 @@ class TradingBot {
     constructor() {
         this.isRunning = false;
         this.connection = null;
+        this.currentRpcIndex = 0;
         this.wallet = null;
         this.currentToken = null;
         this.entryPrice = null;
@@ -91,15 +92,78 @@ class TradingBot {
                 return;
             }
             
-            this.connection = new window.solanaWeb3.Connection(RPC_ENDPOINT);
-            Logger.log('INFO', 'Connected to Solana network', { endpoint: RPC_ENDPOINT });
-            
+            await this.initializeConnection();
             this.loadSettings();
             this.setupEventListeners();
             Logger.log('INFO', 'Trading bot initialized', this.settings);
         } catch (error) {
             Logger.log('ERROR', 'Failed to initialize trading bot', error);
         }
+    }
+
+    async initializeConnection() {
+        for (let i = 0; i < RPC_ENDPOINTS.length; i++) {
+            try {
+                const endpoint = RPC_ENDPOINTS[i];
+                this.connection = new window.solanaWeb3.Connection(endpoint);
+                
+                // Test the connection
+                await this.connection.getSlot();
+                
+                this.currentRpcIndex = i;
+                Logger.log('INFO', 'Connected to Solana network', { endpoint });
+                return;
+            } catch (error) {
+                Logger.log('ERROR', `Failed to connect to RPC endpoint: ${RPC_ENDPOINTS[i]}`, error);
+                continue;
+            }
+        }
+        throw new Error('All RPC endpoints failed');
+    }
+
+    async fallbackToNextRpc() {
+        const nextIndex = (this.currentRpcIndex + 1) % RPC_ENDPOINTS.length;
+        try {
+            const endpoint = RPC_ENDPOINTS[nextIndex];
+            this.connection = new window.solanaWeb3.Connection(endpoint);
+            
+            // Test the connection
+            await this.connection.getSlot();
+            
+            this.currentRpcIndex = nextIndex;
+            Logger.log('INFO', 'Switched to fallback RPC endpoint', { endpoint });
+            return true;
+        } catch (error) {
+            Logger.log('ERROR', `Failed to switch to RPC endpoint: ${RPC_ENDPOINTS[nextIndex]}`, error);
+            return false;
+        }
+    }
+
+    async executeWithRpcFallback(operation) {
+        const maxRetries = RPC_ENDPOINTS.length;
+        for (let i = 0; i < maxRetries; i++) {
+            try {
+                return await operation();
+            } catch (error) {
+                if (error.message.includes('403') || error.message.includes('429') || error.message.includes('timeout')) {
+                    Logger.log('INFO', 'RPC error, attempting fallback', { error: error.message });
+                    const success = await this.fallbackToNextRpc();
+                    if (!success) {
+                        throw new Error('All RPC endpoints failed');
+                    }
+                    continue;
+                }
+                throw error;
+            }
+        }
+        throw new Error('Operation failed after all RPC retries');
+    }
+
+    async getSOLBalance() {
+        return this.executeWithRpcFallback(async () => {
+            const balance = await this.connection.getBalance(this.wallet);
+            return balance / 1e9;
+        });
     }
 
     loadSettings() {
@@ -171,16 +235,6 @@ class TradingBot {
         } catch (error) {
             Logger.log('ERROR', 'Failed to connect wallet', error);
             document.getElementById('wallet-status').textContent = 'Wallet: Error';
-        }
-    }
-
-    async getSOLBalance() {
-        try {
-            const balance = await this.connection.getBalance(this.wallet);
-            return balance / 1e9; // Convert lamports to SOL
-        } catch (error) {
-            Logger.log('ERROR', 'Failed to get SOL balance', error);
-            return 0;
         }
     }
 
@@ -431,22 +485,18 @@ class TradingBot {
     }
 
     async executeJupiterSwap(quote) {
-        try {
-            // Send transaction through Phantom
+        return this.executeWithRpcFallback(async () => {
             const tx = quote.swapTransaction;
             const signedTx = await window.solana.signTransaction(tx);
             const txid = await this.connection.sendRawTransaction(signedTx.serialize());
             await this.connection.confirmTransaction(txid);
             Logger.log('INFO', 'Jupiter swap executed', { txid });
             return txid;
-        } catch (error) {
-            Logger.log('ERROR', 'Error executing Jupiter swap', error);
-            return null;
-        }
+        });
     }
 
     async getTokenBalance(tokenAddress) {
-        try {
+        return this.executeWithRpcFallback(async () => {
             const response = await this.connection.getTokenAccountsByOwner(this.wallet, {
                 mint: new window.solanaWeb3.PublicKey(tokenAddress)
             });
@@ -457,10 +507,7 @@ class TradingBot {
                 balance: balance.value.amount
             });
             return parseFloat(balance.value.amount);
-        } catch (error) {
-            Logger.log('ERROR', 'Error getting token balance', error);
-            return 0;
-        }
+        });
     }
 
     logTrade(trade) {
