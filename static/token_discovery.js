@@ -1,7 +1,7 @@
 // Token Discovery and Monitoring
-const { BIRDEYE_API, DEXSCREENER_API } = window.CONSTANTS || {};
+const { BIRDEYE_API } = window.CONSTANTS || {};
 
-if (!BIRDEYE_API || !DEXSCREENER_API) {
+if (!BIRDEYE_API) {
     console.error('Required constants are not defined. Make sure constants are loaded before this script.');
 }
 
@@ -42,167 +42,107 @@ class TokenDiscovery {
 
     async scanTokens() {
         try {
-            await Promise.all([
-                this.scanBirdeyeTrending(),
-                this.scanDexScreener()
-            ]);
-
-            // Update UI with new findings
+            await this.scanBirdeyeTrending();
             this.updateTokenList();
             
+            if (this.lastScanTime) {
+                const timeSinceLastScan = Date.now() - this.lastScanTime;
+                console.log(`Token scan completed. Time since last scan: ${timeSinceLastScan}ms`);
+            }
+            this.lastScanTime = Date.now();
         } catch (error) {
-            console.error('Token scanning error:', error);
+            console.error('Error scanning tokens:', error);
         }
     }
 
     async scanBirdeyeTrending() {
-        if (!BIRDEYE_API) {
-            console.error('BIRDEYE_API constant is not defined');
-            return;
-        }
-
         try {
-            const response = await fetch(`${BIRDEYE_API}/trending`, {
-                headers: { 'x-chain': 'solana' }
-            });
+            const response = await fetch(`${BIRDEYE_API}/trending_tokens?offset=0&limit=50`);
             const data = await response.json();
             
-            // Filter and sort trending tokens
-            this.trendingTokens = data.data
-                .filter(token => 
-                    token.liquidity >= this.minLiquidity &&
-                    token.volume24h >= this.minVolume
-                )
-                .sort((a, b) => b.priceChange24h - a.priceChange24h);
-
-            console.log(`Found ${this.trendingTokens.length} trending tokens`);
+            if (data.success && data.data) {
+                this.trendingTokens = data.data
+                    .filter(token => {
+                        const volume = parseFloat(token.volume24h || 0);
+                        const liquidity = parseFloat(token.liquidity || 0);
+                        return volume >= this.minVolume && liquidity >= this.minLiquidity;
+                    })
+                    .map(token => ({
+                        address: token.address,
+                        symbol: token.symbol,
+                        name: token.name,
+                        volume24h: token.volume24h,
+                        liquidity: token.liquidity,
+                        price: token.price,
+                        priceChange24h: token.priceChange24h
+                    }));
+                console.log(`Found ${this.trendingTokens.length} trending tokens`);
+            }
         } catch (error) {
-            console.error('Failed to scan Birdeye trending:', error);
-        }
-    }
-
-    async scanDexScreener() {
-        if (!DEXSCREENER_API) {
-            console.error('DEXSCREENER_API constant is not defined');
-            return;
-        }
-
-        try {
-            const response = await fetch(DEXSCREENER_API);
-            const data = await response.json();
-            
-            // Process and filter tokens
-            const validTokens = data.pairs
-                .filter(pair => 
-                    pair.liquidity?.usd >= this.minLiquidity &&
-                    pair.volume?.h24 >= this.minVolume
-                )
-                .map(pair => ({
-                    address: pair.baseToken.address,
-                    symbol: pair.baseToken.symbol,
-                    name: pair.baseToken.name,
-                    liquidity: pair.liquidity.usd,
-                    volume24h: pair.volume.h24,
-                    priceChange24h: pair.priceChange.h24,
-                    createdAt: pair.pairCreatedAt
-                }));
-
-            // Update new listings
-            this.processNewListings(validTokens);
-        } catch (error) {
-            console.error('Failed to scan DexScreener:', error);
-        }
-    }
-
-    processNewListings(tokens) {
-        const currentTime = Date.now();
-        const newTokens = tokens.filter(token => {
-            const tokenAge = currentTime - token.createdAt;
-            const isNew = tokenAge <= 24 * 60 * 60 * 1000; // Less than 24 hours old
-            return isNew && !this.knownTokens.has(token.address);
-        });
-
-        if (newTokens.length > 0) {
-            this.newListings = [...newTokens, ...this.newListings]
-                .slice(0, 50); // Keep only top 50 new listings
-            console.log(`Found ${newTokens.length} new token listings`);
+            console.error('Error scanning Birdeye trending:', error);
         }
     }
 
     updateTokenList() {
-        const tokenList = document.getElementById('discovered-tokens');
+        const tokenList = document.getElementById('token-list');
         if (!tokenList) return;
 
-        // Clear existing list
         tokenList.innerHTML = '';
-
+        
         // Add trending tokens
         if (this.trendingTokens.length > 0) {
             const trendingSection = document.createElement('div');
-            trendingSection.innerHTML = '<h3>🔥 Trending Tokens</h3>';
-            this.trendingTokens.slice(0, 5).forEach(token => {
-                const tokenItem = this.createTokenListItem(token, 'trending');
-                trendingSection.appendChild(tokenItem);
+            trendingSection.className = 'token-section';
+            trendingSection.innerHTML = '<h3>Trending Tokens</h3>';
+            
+            this.trendingTokens.forEach(token => {
+                const tokenElement = document.createElement('div');
+                tokenElement.className = 'token-item';
+                tokenElement.innerHTML = `
+                    <div class="token-info">
+                        <span class="token-symbol">${token.symbol}</span>
+                        <span class="token-name">${token.name}</span>
+                    </div>
+                    <div class="token-metrics">
+                        <span class="token-price">$${parseFloat(token.price).toFixed(6)}</span>
+                        <span class="token-change ${token.priceChange24h >= 0 ? 'positive' : 'negative'}">
+                            ${token.priceChange24h >= 0 ? '↑' : '↓'}${Math.abs(token.priceChange24h).toFixed(2)}%
+                        </span>
+                    </div>
+                `;
+                tokenElement.onclick = () => this.selectToken(token.address);
+                trendingSection.appendChild(tokenElement);
             });
+            
             tokenList.appendChild(trendingSection);
         }
-
-        // Add new listings
-        if (this.newListings.length > 0) {
-            const newSection = document.createElement('div');
-            newSection.innerHTML = '<h3>🆕 New Listings</h3>';
-            this.newListings.slice(0, 5).forEach(token => {
-                const tokenItem = this.createTokenListItem(token, 'new');
-                newSection.appendChild(tokenItem);
-            });
-            tokenList.appendChild(newSection);
-        }
     }
 
-    createTokenListItem(token, type) {
-        const item = document.createElement('div');
-        item.className = 'token-item';
-        
-        const priceChange = token.priceChange24h 
-            ? `<span class="${token.priceChange24h >= 0 ? 'positive' : 'negative'}">
-                ${token.priceChange24h.toFixed(2)}%
-               </span>`
-            : '';
-
-        item.innerHTML = `
-            <div class="token-info">
-                <div class="token-name">${token.symbol} ${type === 'new' ? '🆕' : ''}</div>
-                <div class="token-address">${token.address.slice(0, 4)}...${token.address.slice(-4)}</div>
-            </div>
-            <div class="token-metrics">
-                ${priceChange}
-                <button onclick="selectToken('${token.address}')">Select</button>
-            </div>
-        `;
-        return item;
-    }
-
-    getTopTokens(type = 'trending', limit = 5) {
-        if (type === 'trending') {
-            return this.trendingTokens.slice(0, limit);
-        } else if (type === 'new') {
-            return this.newListings.slice(0, limit);
-        }
-        return [];
-    }
-}
-
-// Initialize token discovery
-window.tokenDiscovery = new TokenDiscovery();
-
-// Function to select token for trading
-function selectToken(address) {
-    const tokenInput = document.getElementById('token-address');
-    if (tokenInput) {
-        tokenInput.value = address;
-        // Trigger any necessary updates
-        if (window.updateTokenInfo) {
-            window.updateTokenInfo(address);
+    selectToken(address) {
+        const tokenInput = document.getElementById('token-address');
+        if (tokenInput) {
+            tokenInput.value = address;
+            // Trigger any necessary updates
+            if (window.updateTokenInfo) {
+                window.updateTokenInfo(address);
+            }
         }
     }
 }
+
+// Initialize token discovery after constants are loaded
+document.addEventListener('DOMContentLoaded', () => {
+    if (window.CONSTANTS) {
+        window.tokenDiscovery = new TokenDiscovery();
+        window.tokenDiscovery.initialize();
+    } else {
+        console.error('Constants not loaded. Waiting for constants...');
+        const checkConstants = setInterval(() => {
+            if (window.CONSTANTS) {
+                window.tokenDiscovery = new TokenDiscovery();
+                window.tokenDiscovery.initialize();
+                clearInterval(checkConstants);
+            }
+        }, 100);
+    }
+});

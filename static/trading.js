@@ -115,7 +115,19 @@ class TradingBot {
         for (let i = 0; i < RPC_ENDPOINTS.length; i++) {
             try {
                 const endpoint = RPC_ENDPOINTS[i];
-                this.connection = new window.solanaWeb3.Connection(endpoint, this.rpcOptions);
+                
+                // Create connection with API key in headers
+                this.connection = new window.solanaWeb3.Connection(
+                    endpoint,
+                    {
+                        commitment: 'confirmed',
+                        httpHeaders: {
+                            'x-api-key': HELIUS_API_KEY
+                        },
+                        confirmTransactionInitialTimeout: 60000,
+                        disableRetryOnRateLimit: false
+                    }
+                );
                 
                 // Test the connection with retries
                 let retries = 3;
