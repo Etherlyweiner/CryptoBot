@@ -5,118 +5,125 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CryptoBot Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100">
-    <div class="min-h-screen">
-        <!-- Navigation -->
-        <nav class="bg-white shadow-lg">
-            <div class="max-w-7xl mx-auto px-4">
-                <div class="flex justify-between items-center py-4">
-                    <div class="flex items-center">
-                        <i class="fas fa-robot text-2xl text-blue-600 mr-2"></i>
-                        <span class="text-xl font-semibold text-gray-800">CryptoBot</span>
-                    </div>
-                    <div class="flex items-center space-x-4">
-                        <button id="startBtn" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg">
-                            <i class="fas fa-play mr-2"></i>Start
-                        </button>
-                        <button id="stopBtn" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg">
-                            <i class="fas fa-stop mr-2"></i>Stop
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </nav>
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">CryptoBot Dashboard</h1>
+            <p class="text-gray-600">Automated Solana Trading Bot</p>
+        </header>
 
-        <!-- Main Content -->
-        <div class="max-w-7xl mx-auto px-4 py-6">
-            <!-- Status Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                <div class="bg-white rounded-lg shadow p-6">
-                    <div class="flex items-center">
-                        <div class="p-3 rounded-full bg-green-100 mr-4">
-                            <i class="fas fa-chart-line text-green-500"></i>
-                        </div>
-                        <div>
-                            <p class="text-sm text-gray-600">Total Profit</p>
-                            <p id="totalProfit" class="text-xl font-semibold">0.00 SOL</p>
-                        </div>
-                    </div>
+        <!-- Bot Controls -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-semibold mb-4">Bot Controls</h2>
+                <div class="flex space-x-4">
+                    <button id="connect-wallet" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                        Connect Wallet
+                    </button>
+                    <button id="start-bot" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" disabled>
+                        Start Bot
+                    </button>
                 </div>
-                <div class="bg-white rounded-lg shadow p-6">
-                    <div class="flex items-center">
-                        <div class="p-3 rounded-full bg-blue-100 mr-4">
-                            <i class="fas fa-exchange-alt text-blue-500"></i>
-                        </div>
-                        <div>
-                            <p class="text-sm text-gray-600">Total Trades</p>
-                            <p id="totalTrades" class="text-xl font-semibold">0</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="bg-white rounded-lg shadow p-6">
-                    <div class="flex items-center">
-                        <div class="p-3 rounded-full bg-yellow-100 mr-4">
-                            <i class="fas fa-percentage text-yellow-500"></i>
-                        </div>
-                        <div>
-                            <p class="text-sm text-gray-600">Win Rate</p>
-                            <p id="winRate" class="text-xl font-semibold">0%</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="bg-white rounded-lg shadow p-6">
-                    <div class="flex items-center">
-                        <div class="p-3 rounded-full bg-purple-100 mr-4">
-                            <i class="fas fa-wallet text-purple-500"></i>
-                        </div>
-                        <div>
-                            <p class="text-sm text-gray-600">Daily Volume</p>
-                            <p id="dailyVolume" class="text-xl font-semibold">0.00 SOL</p>
-                        </div>
-                    </div>
+                <div class="mt-4">
+                    <p id="wallet-status" class="text-gray-600">Wallet: Not Connected</p>
+                    <p id="bot-status" class="text-gray-600">Bot: Stopped</p>
                 </div>
             </div>
 
-            <!-- Positions Table -->
-            <div class="bg-white rounded-lg shadow mb-6">
-                <div class="px-6 py-4 border-b border-gray-200">
-                    <h2 class="text-lg font-semibold text-gray-800">Open Positions</h2>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Entry Price</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PnL</th>
-                            </tr>
-                        </thead>
-                        <tbody id="positionsTable" class="bg-white divide-y divide-gray-200">
-                            <!-- Positions will be inserted here -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Status Log -->
-            <div class="bg-white rounded-lg shadow">
-                <div class="px-6 py-4 border-b border-gray-200">
-                    <h2 class="text-lg font-semibold text-gray-800">Status Log</h2>
-                </div>
-                <div class="p-6">
-                    <div id="statusLog" class="h-48 overflow-y-auto bg-gray-50 p-4 rounded font-mono text-sm">
-                        <!-- Log entries will be inserted here -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-semibold mb-4">Performance Metrics</h2>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-gray-600">Total Trades</p>
+                        <p id="total-trades" class="text-2xl font-bold">0</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-600">Win Rate</p>
+                        <p id="win-rate" class="text-2xl font-bold">0%</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-600">Total P/L</p>
+                        <p id="total-pl" class="text-2xl font-bold">0 SOL</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-600">Portfolio Value</p>
+                        <p id="portfolio-value" class="text-2xl font-bold">0 SOL</p>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Trading Settings -->
+        <div class="bg-white rounded-lg shadow p-6 mb-8">
+            <h2 class="text-xl font-semibold mb-4">Trading Settings</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                    <label class="block text-gray-700 mb-2" for="trade-size">Trade Size (SOL)</label>
+                    <input type="number" id="trade-size" class="w-full px-3 py-2 border rounded" value="0.1" step="0.1">
+                </div>
+                <div>
+                    <label class="block text-gray-700 mb-2" for="stop-loss">Stop Loss (%)</label>
+                    <input type="number" id="stop-loss" class="w-full px-3 py-2 border rounded" value="2" step="0.1">
+                </div>
+                <div>
+                    <label class="block text-gray-700 mb-2" for="take-profit">Take Profit (%)</label>
+                    <input type="number" id="take-profit" class="w-full px-3 py-2 border rounded" value="5" step="0.1">
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Positions -->
+        <div class="bg-white rounded-lg shadow p-6 mb-8">
+            <h2 class="text-xl font-semibold mb-4">Active Positions</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full table-auto">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Token</th>
+                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Entry Price</th>
+                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Current Price</th>
+                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Size</th>
+                            <th class="px-6 py-3 text-left text-gray-500 font-medium">P/L</th>
+                        </tr>
+                    </thead>
+                    <tbody id="positions-table">
+                        <!-- Positions will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Recent Trades -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">Recent Trades</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full table-auto">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Time</th>
+                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Token</th>
+                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Side</th>
+                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Price</th>
+                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Size</th>
+                            <th class="px-6 py-3 text-left text-gray-500 font-medium">P/L</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trades-table">
+                        <!-- Trades will be populated here -->
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
 
     <!-- Scripts -->
-    <script src="static/dashboard.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
+    <script src="/static/logger.js"></script>
+    <script src="/static/rpc-manager.js"></script>
+    <script src="/static/wallet-manager.js"></script>
+    <script src="/static/token-discovery.js"></script>
+    <script src="/static/analytics.js"></script>
+    <script src="/static/trading.js"></script>
 </body>
 </html>
