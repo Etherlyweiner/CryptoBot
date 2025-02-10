@@ -119,7 +119,8 @@ class TradingBot {
                 this.connection = new window.solanaWeb3.Connection(endpoint, {
                     commitment: 'confirmed',
                     httpHeaders: {
-                        'Origin': window.location.origin
+                        'Origin': window.location.origin,
+                        'Authorization': `Bearer ${window.CONSTANTS.HELIUS_API_KEY}`
                     },
                     fetch: window.fetch,
                     confirmTransactionInitialTimeout: 60000,
@@ -155,7 +156,8 @@ class TradingBot {
             this.connection = new window.solanaWeb3.Connection(endpoint, {
                 commitment: 'confirmed',
                 httpHeaders: {
-                    'Origin': window.location.origin
+                    'Origin': window.location.origin,
+                    'Authorization': `Bearer ${window.CONSTANTS.HELIUS_API_KEY}`
                 },
                 fetch: window.fetch,
                 confirmTransactionInitialTimeout: 60000,
