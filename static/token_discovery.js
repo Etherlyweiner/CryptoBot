@@ -1,148 +1,160 @@
-// Token Discovery and Monitoring
-const { BIRDEYE_API } = window.CONSTANTS || {};
-
-if (!BIRDEYE_API) {
-    console.error('Required constants are not defined. Make sure constants are loaded before this script.');
-}
-
+// Token discovery and monitoring
 class TokenDiscovery {
     constructor() {
-        this.knownTokens = new Set();
-        this.trendingTokens = [];
-        this.newListings = [];
-        this.lastScanTime = null;
-        this.scanInterval = 60000; // Scan every minute
-        this.minLiquidity = 1000; // Minimum liquidity in USD
-        this.minVolume = 1000; // Minimum 24h volume in USD
+        this.initialized = false;
+        this.initPromise = null;
+        this.trendingTokens = new Map();
+        this.monitoredTokens = new Map();
+        this.updateInterval = 60000; // 1 minute
+        this.maxMonitoredTokens = 10;
     }
 
     async initialize() {
-        console.log('Initializing token discovery...');
-        await this.loadKnownTokens();
-        this.startScanning();
-    }
-
-    async loadKnownTokens() {
-        try {
-            // Load tokens from Jupiter API
-            const response = await fetch('https://token.jup.ag/all');
-            const tokens = await response.json();
-            tokens.forEach(token => this.knownTokens.add(token.address));
-            console.log(`Loaded ${this.knownTokens.size} known tokens`);
-        } catch (error) {
-            console.error('Failed to load known tokens:', error);
+        if (this.initPromise) {
+            return this.initPromise;
         }
-    }
 
-    startScanning() {
-        console.log('Starting token scanner...');
-        this.scanTokens();
-        setInterval(() => this.scanTokens(), this.scanInterval);
-    }
-
-    async scanTokens() {
-        try {
-            await this.scanBirdeyeTrending();
-            this.updateTokenList();
-            
-            if (this.lastScanTime) {
-                const timeSinceLastScan = Date.now() - this.lastScanTime;
-                console.log(`Token scan completed. Time since last scan: ${timeSinceLastScan}ms`);
+        this.initPromise = (async () => {
+            try {
+                await this.updateTrendingTokens();
+                this.initialized = true;
+                this.startMonitoring();
+            } catch (error) {
+                console.error('Failed to initialize token discovery:', error);
+                throw error;
             }
-            this.lastScanTime = Date.now();
-        } catch (error) {
-            console.error('Error scanning tokens:', error);
-        }
+        })();
+
+        return this.initPromise;
     }
 
-    async scanBirdeyeTrending() {
+    async updateTrendingTokens() {
         try {
-            const response = await fetch(`${BIRDEYE_API}/trending_tokens?offset=0&limit=50`);
+            const response = await fetch('https://public-api.birdeye.so/public/trending_tokens', {
+                headers: {
+                    'x-chain': 'solana',
+                    'x-api-key': window.CONSTANTS.BIRDEYE_API_KEY
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Birdeye API error: ${response.status}`);
+            }
+
             const data = await response.json();
-            
-            if (data.success && data.data) {
-                this.trendingTokens = data.data
-                    .filter(token => {
-                        const volume = parseFloat(token.volume24h || 0);
-                        const liquidity = parseFloat(token.liquidity || 0);
-                        return volume >= this.minVolume && liquidity >= this.minLiquidity;
-                    })
-                    .map(token => ({
-                        address: token.address,
-                        symbol: token.symbol,
-                        name: token.name,
-                        volume24h: token.volume24h,
-                        liquidity: token.liquidity,
-                        price: token.price,
-                        priceChange24h: token.priceChange24h
-                    }));
-                console.log(`Found ${this.trendingTokens.length} trending tokens`);
-            }
+            const tokens = data.data?.sort((a, b) => b.volume_24h - a.volume_24h).slice(0, 10) || [];
+
+            // Update trending tokens map
+            this.trendingTokens.clear();
+            tokens.forEach(token => {
+                this.trendingTokens.set(token.address, {
+                    address: token.address,
+                    name: token.name,
+                    symbol: token.symbol,
+                    price: token.price,
+                    volume24h: token.volume_24h,
+                    priceChange24h: token.price_change_24h
+                });
+            });
+
+            this.updateTokenList();
         } catch (error) {
-            console.error('Error scanning Birdeye trending:', error);
+            console.error('Failed to fetch trending tokens:', error);
+            throw error;
         }
+    }
+
+    startMonitoring() {
+        setInterval(() => {
+            this.updateTrendingTokens().catch(console.error);
+            this.updateMonitoredTokens().catch(console.error);
+        }, this.updateInterval);
+    }
+
+    async updateMonitoredTokens() {
+        for (const [address, token] of this.monitoredTokens) {
+            try {
+                const response = await fetch(`https://public-api.birdeye.so/public/price?address=${address}`, {
+                    headers: {
+                        'x-chain': 'solana',
+                        'x-api-key': window.CONSTANTS.BIRDEYE_API_KEY
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Birdeye API error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const newPrice = data.data?.value;
+                
+                if (newPrice) {
+                    const priceChange = ((newPrice - token.price) / token.price) * 100;
+                    this.monitoredTokens.set(address, {
+                        ...token,
+                        price: newPrice,
+                        priceChange24h: priceChange
+                    });
+                }
+            } catch (error) {
+                console.error(`Failed to update token ${address}:`, error);
+            }
+        }
+
+        this.updateTokenList();
     }
 
     updateTokenList() {
-        const tokenList = document.getElementById('token-list');
-        if (!tokenList) return;
+        const container = document.getElementById('token-list');
+        if (!container) return;
 
-        tokenList.innerHTML = '';
-        
+        let html = '';
+
         // Add trending tokens
-        if (this.trendingTokens.length > 0) {
-            const trendingSection = document.createElement('div');
-            trendingSection.className = 'token-section';
-            trendingSection.innerHTML = '<h3>Trending Tokens</h3>';
-            
-            this.trendingTokens.forEach(token => {
-                const tokenElement = document.createElement('div');
-                tokenElement.className = 'token-item';
-                tokenElement.innerHTML = `
-                    <div class="token-info">
-                        <span class="token-symbol">${token.symbol}</span>
-                        <span class="token-name">${token.name}</span>
-                    </div>
-                    <div class="token-metrics">
-                        <span class="token-price">$${parseFloat(token.price).toFixed(6)}</span>
-                        <span class="token-change ${token.priceChange24h >= 0 ? 'positive' : 'negative'}">
-                            ${token.priceChange24h >= 0 ? '↑' : '↓'}${Math.abs(token.priceChange24h).toFixed(2)}%
-                        </span>
-                    </div>
-                `;
-                tokenElement.onclick = () => this.selectToken(token.address);
-                trendingSection.appendChild(tokenElement);
-            });
-            
-            tokenList.appendChild(trendingSection);
+        for (const token of this.trendingTokens.values()) {
+            const isMonitored = this.monitoredTokens.has(token.address);
+            html += this.createTokenHtml(token, isMonitored);
         }
+
+        container.innerHTML = html;
+
+        // Add event listeners
+        container.querySelectorAll('.monitor-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const address = e.target.dataset.address;
+                const token = this.trendingTokens.get(address);
+                if (token) {
+                    if (this.monitoredTokens.has(address)) {
+                        this.monitoredTokens.delete(address);
+                        e.target.textContent = 'Monitor';
+                    } else if (this.monitoredTokens.size < this.maxMonitoredTokens) {
+                        this.monitoredTokens.set(address, token);
+                        e.target.textContent = 'Unmonitor';
+                    }
+                }
+            });
+        });
     }
 
-    selectToken(address) {
-        const tokenInput = document.getElementById('token-address');
-        if (tokenInput) {
-            tokenInput.value = address;
-            // Trigger any necessary updates
-            if (window.updateTokenInfo) {
-                window.updateTokenInfo(address);
-            }
-        }
+    createTokenHtml(token, isMonitored) {
+        const priceChangeClass = token.priceChange24h >= 0 ? 'positive' : 'negative';
+        return `
+            <div class="token-item">
+                <div class="token-info">
+                    <div class="token-name">${token.symbol}</div>
+                    <div class="token-address">${token.address.slice(0, 4)}...${token.address.slice(-4)}</div>
+                </div>
+                <div class="token-metrics">
+                    <div>$${token.price.toFixed(6)}</div>
+                    <div class="${priceChangeClass}">${token.priceChange24h.toFixed(2)}%</div>
+                </div>
+                <button class="monitor-btn" data-address="${token.address}">
+                    ${isMonitored ? 'Unmonitor' : 'Monitor'}
+                </button>
+            </div>
+        `;
     }
 }
 
-// Initialize token discovery after constants are loaded
-document.addEventListener('DOMContentLoaded', () => {
-    if (window.CONSTANTS) {
-        window.tokenDiscovery = new TokenDiscovery();
-        window.tokenDiscovery.initialize();
-    } else {
-        console.error('Constants not loaded. Waiting for constants...');
-        const checkConstants = setInterval(() => {
-            if (window.CONSTANTS) {
-                window.tokenDiscovery = new TokenDiscovery();
-                window.tokenDiscovery.initialize();
-                clearInterval(checkConstants);
-            }
-        }, 100);
-    }
-});
+// Initialize token discovery
+window.tokenDiscovery = new TokenDiscovery();

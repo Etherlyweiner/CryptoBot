@@ -1,72 +1,22 @@
-// Trading Logic
-const { JUPITER_API, RPC_ENDPOINTS, SOL_MINT, HELIUS_API_KEY } = window.CONSTANTS || {};
-
-if (!JUPITER_API || !RPC_ENDPOINTS || !SOL_MINT || !HELIUS_API_KEY) {
-    console.error('Required constants are not defined. Make sure constants are loaded before this script.');
-}
-
-// Trading bot logger
-class Logger {
-    static log(type, message, data = null) {
-        const timestamp = new Date().toISOString();
-        const logEntry = {
-            timestamp,
-            type,
-            message,
-            data
-        };
-        
-        // Log to console with color
-        const colors = {
-            INFO: '#4CAF50',
-            ERROR: '#f44336',
-            TRADE: '#2196F3',
-            PRICE: '#FF9800'
-        };
-        
-        console.log(
-            `%c[${type}] ${timestamp}\n${message}`,
-            `color: ${colors[type] || '#fff'}`,
-            data ? data : ''
-        );
-
-        // Store in log history
-        if (!window.botLogs) window.botLogs = [];
-        window.botLogs.push(logEntry);
-        
-        // Update UI if log container exists
-        const logContainer = document.getElementById('bot-logs');
-        if (logContainer) {
-            const logElement = document.createElement('div');
-            logElement.className = `log-entry ${type.toLowerCase()}`;
-            logElement.innerHTML = `
-                <span class="timestamp">${new Date(timestamp).toLocaleTimeString()}</span>
-                <span class="type">${type}</span>
-                <span class="message">${message}</span>
-                ${data ? `<pre class="data">${JSON.stringify(data, null, 2)}</pre>` : ''}
-            `;
-            logContainer.insertBefore(logElement, logContainer.firstChild);
-            
-            // Keep only last 100 logs in UI
-            if (logContainer.children.length > 100) {
-                logContainer.removeChild(logContainer.lastChild);
-            }
-        }
-    }
-}
-
+// Trading Logic and State Management
 class TradingBot {
     constructor() {
-        this.isRunning = false;
-        this.wallet = null;
-        this.connection = null;
-        this.currentRpcIndex = 0;
-        this.currentToken = null;
-        this.entryPrice = null;
-        this.lastPrice = null;
-        this.tradeHistory = [];
-        
-        // Trading settings
+        // Core state
+        this.state = {
+            isRunning: false,
+            wallet: null,
+            connection: null,
+            currentRpcIndex: 0
+        };
+
+        // Trading state
+        this.trades = {
+            active: new Map(),
+            history: [],
+            lastUpdate: null
+        };
+
+        // Settings with defaults
         this.settings = {
             checkInterval: 30000,
             buyThreshold: 5,
@@ -75,136 +25,204 @@ class TradingBot {
             tradeSize: 0.1,
             stopLoss: -10,
             takeProfit: 20,
-            maxActiveTokens: 3
+            maxActiveTokens: 3,
+            retryAttempts: 3,
+            retryDelay: 1000
         };
 
-        // Price tracking
-        this.priceTracking = {
-            tokens: new Map(),
-            entryPrices: new Map()
+        // Cache for performance
+        this.cache = {
+            prices: new Map(),
+            balances: new Map(),
+            lastPriceCheck: null,
+            priceValidityDuration: 30000 // 30 seconds
         };
 
-        // RPC connection options
+        // Initialize connection options
         this.rpcOptions = {
             commitment: 'confirmed',
             httpHeaders: {
-                'x-api-key': HELIUS_API_KEY
+                'x-api-key': window.CONSTANTS.HELIUS_API_KEY
             },
             confirmTransactionInitialTimeout: 60000,
             disableRetryOnRateLimit: false
         };
+
+        // Bind methods for event listeners
+        this.handleWalletConnect = this.handleWalletConnect.bind(this);
+        this.handleWalletDisconnect = this.handleWalletDisconnect.bind(this);
+        this.handleSettingsChange = this.handleSettingsChange.bind(this);
     }
 
     async initialize() {
         try {
             if (!window.solanaWeb3) {
-                Logger.log('ERROR', 'Solana Web3 not loaded');
-                return;
+                throw new Error('Solana Web3 not loaded');
             }
-            
-            // Initialize RPC connection first
+
+            // Initialize RPC first
             await this.initializeConnection();
             
-            // Check for existing wallet connection
-            if (window.solana && window.solana.isPhantom) {
+            // Setup event listeners
+            this.setupEventListeners();
+            
+            // Load saved settings
+            this.loadSettings();
+            
+            // Auto-connect if wallet was previously connected
+            if (window.solana?.isPhantom) {
                 const connected = await window.solana.isConnected;
                 if (connected) {
-                    await this.connectWallet(true); // silent connect
+                    await this.handleWalletConnect(true);
                 }
             }
-            
-            this.loadSettings();
-            this.setupEventListeners();
+
             Logger.log('INFO', 'Trading bot initialized', this.settings);
         } catch (error) {
             Logger.log('ERROR', 'Failed to initialize trading bot', error);
+            throw error;
         }
     }
 
     async initializeConnection() {
-        for (let i = 0; i < RPC_ENDPOINTS.length; i++) {
+        const endpoints = window.CONSTANTS.RPC_ENDPOINTS;
+        for (let i = 0; i < endpoints.length; i++) {
             try {
-                const endpoint = RPC_ENDPOINTS[i];
+                const endpoint = endpoints[i];
+                this.state.connection = new window.solanaWeb3.Connection(endpoint, this.rpcOptions);
                 
-                // Create connection with API key in headers
-                this.connection = new window.solanaWeb3.Connection(
-                    endpoint,
-                    {
-                        commitment: 'confirmed',
-                        httpHeaders: {
-                            'x-api-key': HELIUS_API_KEY
-                        },
-                        confirmTransactionInitialTimeout: 60000,
-                        disableRetryOnRateLimit: false
-                    }
+                // Test connection with retries
+                await this.executeWithRetry(
+                    () => this.state.connection.getSlot(),
+                    this.settings.retryAttempts,
+                    this.settings.retryDelay
                 );
-                
-                // Test the connection with retries
-                let retries = 3;
-                while (retries > 0) {
-                    try {
-                        await this.connection.getSlot();
-                        this.currentRpcIndex = i;
-                        Logger.log('INFO', 'Connected to Solana network', { endpoint });
-                        return;
-                    } catch (error) {
-                        retries--;
-                        if (retries === 0) throw error;
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                        Logger.log('INFO', 'Retrying RPC connection', { retries, error: error.message });
-                    }
-                }
+
+                this.state.currentRpcIndex = i;
+                Logger.log('INFO', 'Connected to Solana network', { endpoint });
+                return;
             } catch (error) {
-                Logger.log('ERROR', `Failed to connect to RPC endpoint: ${RPC_ENDPOINTS[i]}`, error);
+                Logger.log('ERROR', `Failed to connect to RPC endpoint: ${endpoints[i]}`, error);
                 continue;
             }
         }
         throw new Error('All RPC endpoints failed');
     }
 
-    async fallbackToNextRpc() {
-        const nextIndex = (this.currentRpcIndex + 1) % RPC_ENDPOINTS.length;
-        try {
-            const endpoint = RPC_ENDPOINTS[nextIndex];
-            this.connection = new window.solanaWeb3.Connection(endpoint, this.rpcOptions);
-            
-            // Test the connection
-            await this.connection.getSlot();
-            
-            this.currentRpcIndex = nextIndex;
-            Logger.log('INFO', 'Switched to fallback RPC endpoint', { endpoint });
-            return true;
-        } catch (error) {
-            Logger.log('ERROR', `Failed to switch to RPC endpoint: ${RPC_ENDPOINTS[nextIndex]}`, error);
-            return false;
-        }
-    }
-
-    async executeWithRpcFallback(operation) {
-        const maxRetries = RPC_ENDPOINTS.length;
-        for (let i = 0; i < maxRetries; i++) {
+    async executeWithRetry(operation, maxRetries = 3, delay = 1000) {
+        let lastError;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 return await operation();
             } catch (error) {
-                if (error.message.includes('403') || error.message.includes('429') || error.message.includes('timeout')) {
-                    Logger.log('INFO', 'RPC error, attempting fallback', { error: error.message });
-                    const success = await this.fallbackToNextRpc();
-                    if (!success) {
-                        throw new Error('All RPC endpoints failed');
-                    }
-                    continue;
+                lastError = error;
+                if (attempt < maxRetries) {
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    Logger.log('INFO', `Retry attempt ${attempt}/${maxRetries}`, { error: error.message });
                 }
-                throw error;
             }
         }
-        throw new Error('Operation failed after all RPC retries');
+        throw lastError;
     }
 
-    async getSOLBalance() {
-        return this.executeWithRpcFallback(async () => {
-            const balance = await this.connection.getBalance(this.wallet);
-            return balance / 1e9;
+    setupEventListeners() {
+        // Wallet events
+        const connectBtn = document.getElementById('connect-wallet');
+        connectBtn?.addEventListener('click', () => this.handleWalletConnect());
+
+        // Bot control events
+        const startBtn = document.getElementById('start-bot');
+        startBtn?.addEventListener('click', () => {
+            if (this.state.isRunning) {
+                this.stop();
+                startBtn.textContent = 'Start Bot';
+            } else {
+                this.start();
+                startBtn.textContent = 'Stop Bot';
+            }
         });
+
+        // Settings events
+        const settingsInputs = ['trade-size', 'buy-threshold', 'sell-threshold', 'stop-loss', 'take-profit'];
+        settingsInputs.forEach(id => {
+            const element = document.getElementById(id);
+            element?.addEventListener('change', this.handleSettingsChange);
+        });
+
+        // Wallet connection events
+        if (window.solana) {
+            window.solana.on('disconnect', this.handleWalletDisconnect);
+            window.solana.on('accountChanged', this.handleWalletConnect);
+        }
+    }
+
+    async handleWalletConnect(silent = false) {
+        try {
+            if (!window.solana?.isPhantom) {
+                throw new Error('Phantom wallet not installed');
+            }
+
+            let resp;
+            if (silent) {
+                try {
+                    resp = await window.solana.connect({ onlyIfTrusted: true });
+                } catch {
+                    return; // Not previously connected
+                }
+            } else {
+                resp = await window.solana.connect();
+            }
+
+            this.state.wallet = resp.publicKey;
+            
+            // Verify connection with balance check
+            const balance = await this.getSOLBalance();
+            
+            this.updateWalletUI(true, balance);
+            Logger.log('INFO', 'Wallet connected', {
+                address: this.state.wallet.toString(),
+                balance
+            });
+        } catch (error) {
+            this.updateWalletUI(false);
+            Logger.log('ERROR', 'Failed to connect wallet', error);
+            throw error;
+        }
+    }
+
+    handleWalletDisconnect() {
+        this.state.wallet = null;
+        this.updateWalletUI(false);
+        if (this.state.isRunning) {
+            this.stop();
+        }
+        Logger.log('INFO', 'Wallet disconnected');
+    }
+
+    updateWalletUI(connected, balance = null) {
+        const statusEl = document.getElementById('wallet-status');
+        const startBtn = document.getElementById('start-bot');
+        
+        if (connected && this.state.wallet) {
+            const address = this.state.wallet.toString();
+            statusEl.textContent = `Wallet: ${address.slice(0, 4)}...${address.slice(-4)}`;
+            if (balance !== null) {
+                statusEl.textContent += ` (${balance.toFixed(4)} SOL)`;
+            }
+            startBtn.disabled = false;
+        } else {
+            statusEl.textContent = 'Wallet: Not Connected';
+            startBtn.disabled = true;
+        }
+    }
+
+    handleSettingsChange(event) {
+        const key = event.target.id.replace(/-./g, x => x[1].toUpperCase());
+        const value = parseFloat(event.target.value);
+        if (!isNaN(value)) {
+            this.settings[key] = value;
+            Logger.log('INFO', 'Setting updated', { [key]: value });
+        }
     }
 
     loadSettings() {
@@ -213,406 +231,58 @@ class TradingBot {
             const element = document.getElementById(id);
             if (element) {
                 const key = id.replace(/-./g, x => x[1].toUpperCase());
-                this.settings[key] = parseFloat(element.value);
+                const value = parseFloat(element.value);
+                if (!isNaN(value)) {
+                    this.settings[key] = value;
+                }
             }
         });
-        Logger.log('INFO', 'Settings loaded', this.settings);
-    }
-
-    setupEventListeners() {
-        // Connect wallet button
-        const connectButton = document.getElementById('connect-wallet');
-        if (connectButton) {
-            connectButton.addEventListener('click', () => this.connectWallet());
-        }
-
-        // Start/Stop bot button
-        const startButton = document.getElementById('start-bot');
-        if (startButton) {
-            startButton.addEventListener('click', () => {
-                if (this.isRunning) {
-                    this.stop();
-                    startButton.textContent = 'Start Bot';
-                } else {
-                    this.start();
-                    startButton.textContent = 'Stop Bot';
-                }
-            });
-        }
-
-        // Settings inputs
-        const elements = ['trade-size', 'buy-threshold', 'sell-threshold', 'stop-loss', 'take-profit'];
-        elements.forEach(id => {
-            const element = document.getElementById(id);
-            if (element) {
-                element.addEventListener('change', () => {
-                    const key = id.replace(/-./g, x => x[1].toUpperCase());
-                    this.settings[key] = parseFloat(element.value);
-                    Logger.log('INFO', 'Setting updated', { [key]: this.settings[key] });
-                });
-            }
-        });
-
-        Logger.log('INFO', 'Event listeners set up');
-    }
-
-    async connectWallet(silent = false) {
-        try {
-            if (!window.solana || !window.solana.isPhantom) {
-                throw new Error('Phantom wallet is not installed');
-            }
-
-            let resp;
-            if (silent) {
-                // Try to reconnect to existing session
-                try {
-                    resp = await window.solana.connect({ onlyIfTrusted: true });
-                } catch (e) {
-                    // Not previously connected, skip
-                    return;
-                }
-            } else {
-                // Request new connection
-                resp = await window.solana.connect();
-            }
-
-            this.wallet = resp.publicKey;
-
-            // Verify connection with RPC
-            const balance = await this.getSOLBalance();
-            
-            Logger.log('INFO', 'Wallet connected', {
-                address: this.wallet.toString(),
-                balance: balance
-            });
-            
-            document.getElementById('wallet-status').textContent = 
-                `Wallet: ${this.wallet.toString().slice(0, 4)}...${this.wallet.toString().slice(-4)}`;
-            document.getElementById('start-bot').disabled = false;
-            
-            // Setup disconnect handler
-            window.solana.on('disconnect', () => {
-                this.wallet = null;
-                document.getElementById('wallet-status').textContent = 'Wallet: Not Connected';
-                document.getElementById('start-bot').disabled = true;
-                if (this.isRunning) {
-                    this.stop();
-                }
-                Logger.log('INFO', 'Wallet disconnected');
-            });
-            
-        } catch (error) {
-            Logger.log('ERROR', 'Failed to connect wallet', error);
-            document.getElementById('wallet-status').textContent = 'Wallet: Error';
-            throw error; // Re-throw to handle in UI
-        }
     }
 
     async start() {
-        if (!this.wallet) {
+        if (!this.state.wallet) {
             Logger.log('ERROR', 'Please connect wallet first');
             return;
         }
 
-        this.isRunning = true;
+        this.state.isRunning = true;
         document.getElementById('bot-status').textContent = 'Bot: Running';
         Logger.log('INFO', 'Trading bot started', {
-            wallet: this.wallet.toString(),
+            wallet: this.state.wallet.toString(),
             settings: this.settings
         });
         
-        // Start monitoring loop
         this.monitoringLoop();
     }
 
     stop() {
-        this.isRunning = false;
+        this.state.isRunning = false;
         document.getElementById('bot-status').textContent = 'Bot: Stopped';
         Logger.log('INFO', 'Trading bot stopped');
     }
 
     async monitoringLoop() {
-        while (this.isRunning) {
+        while (this.state.isRunning) {
             try {
                 await this.checkPriceAndTrade();
                 await new Promise(resolve => setTimeout(resolve, this.settings.checkInterval));
             } catch (error) {
                 Logger.log('ERROR', 'Error in monitoring loop', error);
+                // Don't stop the bot on error, just continue
             }
         }
     }
 
-    async checkPriceAndTrade() {
-        const tokenAddress = document.getElementById('token-address').value;
-        if (!tokenAddress) return;
-
-        try {
-            const price = await this.getTokenPrice(tokenAddress);
-            if (!price) return;
-
-            Logger.log('PRICE', `Token ${tokenAddress} price: ${price} SOL`);
-            this.lastPrice = price;
-
-            if (!this.currentToken) {
-                if (this.shouldBuy(price)) {
-                    Logger.log('TRADE', 'Buy signal detected', {
-                        token: tokenAddress,
-                        price,
-                        reason: 'Price increase above threshold'
-                    });
-                    await this.executeBuy(tokenAddress, price);
-                }
-            } else if (this.currentToken === tokenAddress) {
-                if (this.shouldSell(price)) {
-                    Logger.log('TRADE', 'Sell signal detected', {
-                        token: tokenAddress,
-                        price,
-                        entryPrice: this.entryPrice,
-                        profit: ((price - this.entryPrice) / this.entryPrice) * 100
-                    });
-                    await this.executeSell(tokenAddress, price);
-                }
-            }
-
-        } catch (error) {
-            Logger.log('ERROR', 'Error checking price and trading', error);
-        }
-    }
-
-    async getTokenPrice(tokenAddress) {
-        if (!JUPITER_API) {
-            Logger.log('ERROR', 'JUPITER_API constant is not defined');
-            return null;
-        }
-
-        try {
-            const response = await fetch(`${JUPITER_API}/price?ids=${tokenAddress}`);
-            const data = await response.json();
-            return parseFloat(data.data[tokenAddress].price);
-        } catch (error) {
-            Logger.log('ERROR', 'Error getting token price', error);
-            return null;
-        }
-    }
-
-    shouldBuy(currentPrice) {
-        if (!this.lastPrice) return false;
-        const priceChange = ((currentPrice - this.lastPrice) / this.lastPrice) * 100;
-        const shouldBuy = priceChange >= this.settings.buyThreshold;
-        
-        if (shouldBuy) {
-            Logger.log('INFO', 'Buy condition met', {
-                currentPrice,
-                lastPrice: this.lastPrice,
-                priceChange,
-                threshold: this.settings.buyThreshold
-            });
-        }
-        
-        return shouldBuy;
-    }
-
-    shouldSell(currentPrice) {
-        if (!this.entryPrice) return false;
-        
-        const priceChange = ((currentPrice - this.entryPrice) / this.entryPrice) * 100;
-        
-        // Check stop loss
-        if (priceChange <= this.settings.stopLoss) {
-            Logger.log('TRADE', 'Stop loss triggered', {
-                currentPrice,
-                entryPrice: this.entryPrice,
-                loss: priceChange
-            });
-            return true;
-        }
-        
-        // Check take profit
-        if (priceChange >= this.settings.takeProfit) {
-            Logger.log('TRADE', 'Take profit triggered', {
-                currentPrice,
-                entryPrice: this.entryPrice,
-                profit: priceChange
-            });
-            return true;
-        }
-        
-        // Check sell threshold
-        if (priceChange <= this.settings.sellThreshold) {
-            Logger.log('TRADE', 'Sell threshold triggered', {
-                currentPrice,
-                entryPrice: this.entryPrice,
-                priceChange
-            });
-            return true;
-        }
-        
-        return false;
-    }
-
-    async executeBuy(tokenAddress, price) {
-        try {
-            const amountInSol = this.settings.tradeSize;
-            Logger.log('TRADE', 'Executing buy order', {
-                token: tokenAddress,
-                amount: amountInSol,
-                price
-            });
-            
-            // Get Jupiter quote
-            const quote = await this.getJupiterQuote(SOL_MINT, tokenAddress, amountInSol);
-            if (!quote) return;
-
-            // Execute swap through Phantom
-            const txid = await this.executeJupiterSwap(quote);
-            if (!txid) return;
-
-            // Update state
-            this.currentToken = tokenAddress;
-            this.entryPrice = price;
-
-            Logger.log('TRADE', 'Buy order executed', {
-                token: tokenAddress,
-                amount: amountInSol,
-                price,
-                txid
-            });
-
-            // Log trade
-            this.logTrade({
-                type: 'BUY',
-                token: tokenAddress,
-                price: price,
-                amount: amountInSol,
-                txid: txid
-            });
-
-        } catch (error) {
-            Logger.log('ERROR', 'Error executing buy', error);
-        }
-    }
-
-    async executeSell(tokenAddress, price) {
-        try {
-            // Get token balance
-            const balance = await this.getTokenBalance(tokenAddress);
-            if (!balance) return;
-
-            Logger.log('TRADE', 'Executing sell order', {
-                token: tokenAddress,
-                balance,
-                price
-            });
-
-            // Get Jupiter quote
-            const quote = await this.getJupiterQuote(tokenAddress, SOL_MINT, balance);
-            if (!quote) return;
-
-            // Execute swap through Phantom
-            const txid = await this.executeJupiterSwap(quote);
-            if (!txid) return;
-
-            // Update state
-            this.currentToken = null;
-            this.entryPrice = null;
-
-            Logger.log('TRADE', 'Sell order executed', {
-                token: tokenAddress,
-                amount: balance,
-                price,
-                txid
-            });
-
-            // Log trade
-            this.logTrade({
-                type: 'SELL',
-                token: tokenAddress,
-                price: price,
-                amount: balance,
-                txid: txid
-            });
-
-        } catch (error) {
-            Logger.log('ERROR', 'Error executing sell', error);
-        }
-    }
-
-    async getJupiterQuote(inputMint, outputMint, amount) {
-        if (!JUPITER_API) {
-            Logger.log('ERROR', 'JUPITER_API constant is not defined');
-            return null;
-        }
-
-        try {
-            const response = await fetch(`${JUPITER_API}/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=50`);
-            const quote = await response.json();
-            Logger.log('INFO', 'Got Jupiter quote', quote);
-            return quote;
-        } catch (error) {
-            Logger.log('ERROR', 'Error getting Jupiter quote', error);
-            return null;
-        }
-    }
-
-    async executeJupiterSwap(quote) {
-        return this.executeWithRpcFallback(async () => {
-            const tx = quote.swapTransaction;
-            const signedTx = await window.solana.signTransaction(tx);
-            const txid = await this.connection.sendRawTransaction(signedTx.serialize());
-            await this.connection.confirmTransaction(txid);
-            Logger.log('INFO', 'Jupiter swap executed', { txid });
-            return txid;
+    async getSOLBalance() {
+        return this.executeWithRetry(async () => {
+            const balance = await this.state.connection.getBalance(this.state.wallet);
+            return balance / 1e9;
         });
-    }
-
-    async getTokenBalance(tokenAddress) {
-        return this.executeWithRpcFallback(async () => {
-            const response = await this.connection.getTokenAccountsByOwner(this.wallet, {
-                mint: new window.solanaWeb3.PublicKey(tokenAddress)
-            });
-            if (response.value.length === 0) return 0;
-            const balance = await this.connection.getTokenAccountBalance(response.value[0].pubkey);
-            Logger.log('INFO', 'Got token balance', {
-                token: tokenAddress,
-                balance: balance.value.amount
-            });
-            return parseFloat(balance.value.amount);
-        });
-    }
-
-    logTrade(trade) {
-        this.tradeHistory.push({
-            ...trade,
-            timestamp: new Date().toISOString()
-        });
-
-        Logger.log('TRADE', `${trade.type} trade logged`, trade);
-        this.updateTradeHistory();
-    }
-
-    updateTradeHistory() {
-        const tradesList = document.getElementById('trades-list');
-        if (!tradesList) return;
-
-        const trades = this.tradeHistory.slice().reverse();
-        tradesList.innerHTML = trades.map(trade => `
-            <div class="trade-item">
-                <div>${trade.type} ${trade.token.slice(0, 4)}...${trade.token.slice(-4)}</div>
-                <div>Price: ${trade.price.toFixed(6)} SOL</div>
-                <div>Amount: ${trade.amount.toFixed(6)}</div>
-                <div>Time: ${new Date(trade.timestamp).toLocaleString()}</div>
-                <div>
-                    <a href="https://solscan.io/tx/${trade.txid}" target="_blank">
-                        View Transaction
-                    </a>
-                </div>
-            </div>
-        `).join('');
     }
 }
 
-// Initialize trading bot after page load
+// Initialize trading bot
 document.addEventListener('DOMContentLoaded', () => {
     window.tradingBot = new TradingBot();
-    window.tradingBot.initialize();
+    window.tradingBot.initialize().catch(console.error);
 });
