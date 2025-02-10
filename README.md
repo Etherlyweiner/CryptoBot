@@ -1,169 +1,134 @@
-# CryptoBot - Professional Solana Trading Bot
+# CryptoBot - Autonomous Trading System
 
-A sophisticated cryptocurrency trading bot focused on conservative trading strategies with robust risk management, built for the Solana blockchain.
+An advanced cryptocurrency trading bot built on the Solana blockchain, featuring real-time market analysis, multiple trading strategies, and comprehensive risk management.
 
 ## Features
 
-### Conservative Trading Strategy
+- **Multi-Strategy Trading**
+  - Momentum-based strategy
+  - Mean reversion strategy
+  - Custom strategy framework
+  - Strategy performance analytics
 
-- Dynamic position sizing based on market conditions
-- Advanced risk management with multiple safety checks
-- Support/resistance level detection
-- Volume profile analysis
-- Market volatility monitoring
+- **Risk Management**
+  - Dynamic position sizing
+  - Stop-loss automation
+  - Risk factor analysis
+  - Exposure limits
+  - Correlation monitoring
 
-### Risk Management
+- **Performance Analytics**
+  - Real-time P&L tracking
+  - Strategy performance metrics
+  - Risk-adjusted returns
+  - Trade analytics
+  - Custom alerts
 
-- Maximum drawdown protection
-- Position size limits
-- Total exposure control
-- Win rate monitoring
-- Correlation analysis
-- Daily trade limits
+- **System Security**
+  - Wallet security measures
+  - Transaction validation
+  - API key management
+  - Rate limiting
+  - IP whitelisting
 
-### Real-time Monitoring
+## Prerequisites
 
-- Performance dashboard
-- Risk metrics visualization
-- Trading activity tracking
-- Historical analysis tools
-- Alert system
-
-### Technical Features
-
-- Prometheus metrics integration
-- Advanced error handling and logging
-- Secure credential storage
-- RPC connection fallback system
-- Professional UI with Streamlit
+- Node.js >= 16.0.0
+- Python >= 3.8
+- Solana CLI tools
+- Hardware wallet (recommended)
 
 ## Installation
 
-### Prerequisites
-
-- Python 3.10
-- Git
-- Phantom Wallet
-- Solana CLI (optional)
-
-### Quick Start
-
-1. Clone the repository:
-
+1. **Clone the Repository**
    ```bash
-   git clone https://github.com/Etherlyweiner/CryptoBot.git
+   git clone https://github.com/yourusername/CryptoBot.git
    cd CryptoBot
    ```
 
-2. Create and activate a virtual environment:
-
+2. **Install Dependencies**
    ```bash
-   # Windows
-   python -m venv .venv
-   .venv\Scripts\activate
+   # Install Python dependencies
+   pip install -r requirements.txt
 
-   # Linux/Mac
-   python -m venv .venv
-   source .venv/bin/activate
+   # Install Node.js dependencies
+   npm install
    ```
 
-3. Install dependencies:
-
+3. **Configure Environment**
    ```bash
-   pip install -e .
-   ```
+   # Copy example environment file
+   cp .env.example .env
 
-4. Configure your environment:
-
-   ```bash
-   cp config/env_template.txt .env
    # Edit .env with your settings
+   nano .env
    ```
 
-5. Start the bot:
-
+4. **Initialize Configuration**
    ```bash
-   streamlit run src/cryptobot/app.py
+   # Generate configuration files
+   python init_config.py
    ```
-
-## Quick Start
-
-### First-Time Setup
-
-1. Install Redis for Windows (if not already installed)
-2. Install Node.js (if not already installed)
-3. Run the following command to create a desktop shortcut:
-
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File create_shortcut.ps1
-   ```
-
-### Starting the Bot
-
-1. **Using the Desktop Shortcut**
-
-   - Double-click the "CryptoBot Dashboard" shortcut on your desktop
-   - The dashboard will open automatically in your default browser
-   - All components (Redis, Trading Bot, Dashboard) will start automatically
-
-2. **Manual Start**
-
-   - Run `start_all.bat` from the project directory
-   - The dashboard will open automatically at [http://localhost:8000](http://localhost:8000)
-
-### System Components
-
-The startup script ensures all components start in the correct order:
-
-1. Redis server (if not running)
-2. Node.js dashboard server
-3. Python trading bot
-4. Web browser with dashboard
-
-### Troubleshooting
-
-If you encounter any issues:
-
-1. Ensure Redis is installed and running (`net start Redis` as Administrator)
-2. Verify Node.js is installed (`node --version`)
-3. Check the logs in the `logs` directory for detailed error messages
 
 ## Configuration
 
 ### Environment Variables
 
-- `SOLANA_NETWORK`: Network to connect to (mainnet-beta/devnet)
-- `SOLANA_RPC_URL`: Your Solana RPC URL
-- `PHANTOM_WALLET_ADDRESS`: Your Phantom wallet address
-- `SOLSCAN_API_KEY`: Your Solscan API key
+```env
+# RPC Endpoints
+HELIUS_RPC=https://mainnet.helius-rpc.com
+HELIUS_KEY=your_helius_api_key
+QUICKNODE_RPC=your_quicknode_endpoint
+QUICKNODE_KEY=your_quicknode_api_key
 
-### Trading Parameters
+# API Keys
+JUPITER_API=https://quote-api.jup.ag/v6
+BIRDEYE_API=https://public-api.birdeye.so/public
 
-Edit `config/trading.json`:
+# Security
+WHITELISTED_IPS=127.0.0.1,your_ip_address
+MAX_REQUESTS_PER_MINUTE=60
+KEY_ROTATION_DAYS=30
 
-```json
-{
-    "POSITION_SIZE_SOL": 0.1,
-    "STOP_LOSS_PERCENT": 5,
-    "TAKE_PROFIT_PERCENT": 10,
-    "MAX_POSITIONS": 3,
-    "MAX_TRADES_PER_DAY": 20,
-    "ORDER_TIMEOUT": 45
-}
+# Trading Parameters
+MAX_POSITION_SIZE=1000  # in USD
+DAILY_LOSS_LIMIT=100    # in USD
+MAX_TRADES_PER_DAY=10
 ```
 
-### Network Configuration
+### Trading Strategies
 
-Edit `config/network.json`:
+Configure trading strategies in `config.js`:
 
-```json
+```javascript
 {
-    "SOLANA_NETWORK": "mainnet-beta",
-    "SOLANA_RPC_URL": "https://api.mainnet-beta.solana.com",
-    "BACKUP_RPC_URLS": [
-        "https://solana-mainnet.g.alchemy.com/v2/demo",
-        "https://rpc.ankr.com/solana"
-    ]
+  "strategies": {
+    "momentum": {
+      "enabled": true,
+      "timeframe": "5m",
+      "indicators": {
+        "rsi": {
+          "period": 14,
+          "overbought": 70,
+          "oversold": 30
+        },
+        "ema": {
+          "fast": 12,
+          "slow": 26
+        }
+      }
+    },
+    "meanReversion": {
+      "enabled": true,
+      "timeframe": "15m",
+      "indicators": {
+        "bollinger": {
+          "period": 20,
+          "stdDev": 2
+        }
+      }
+    }
+  }
 }
 ```
 
@@ -171,68 +136,133 @@ Edit `config/network.json`:
 
 ### Starting the Bot
 
-1. Ensure your Phantom wallet is connected
-2. Start the Streamlit dashboard:
-
+1. **Start the Server**
    ```bash
-   streamlit run src/cryptobot/app.py
+   # Start the Python server
+   python run_server.py
+
+   # Or use the Node.js server
+   node https-server.js
    ```
 
-3. Navigate to the dashboard (default: [http://localhost:8501](http://localhost:8501))
-4. Configure your trading parameters
-5. Start trading!
-
-### System Monitoring
-
-- View real-time metrics at [http://localhost:8501](http://localhost:8501)
-- Check logs in the `logs` directory
-- Monitor Prometheus metrics at [http://localhost:9090](http://localhost:9090)
-
-### Data Management
-
-- Daily log rotation
-- Automatic state backup
-- Transaction history export
-
-## Development
+2. **Access the Dashboard**
+   - Open `http://localhost:3000` in your browser
+   - Connect your wallet
+   - Configure trading parameters
+   - Start trading
 
 ### Running Tests
 
 ```bash
-pytest tests/
+# Run all tests
+node tests/run_tests.js
+
+# Or use the browser interface
+open tests/test.html
 ```
 
-### Code Style
+## Monitoring & Maintenance
 
-```bash
-# Format code
-black src/
+### Performance Dashboard
 
-# Sort imports
-isort src/
+Access the performance dashboard at `http://localhost:3000/dashboard` to monitor:
+- Real-time P&L
+- Trade history
+- Strategy performance
+- Risk metrics
+- System alerts
 
-# Lint code
-flake8 src/
+### Logs
+
+Logs are stored in the `logs` directory:
+```
+logs/
+├── trading.log    # Trading activity
+├── system.log     # System events
+├── error.log      # Error messages
+└── security.log   # Security events
 ```
 
-### Building Documentation
+### Backups
 
-```bash
-cd docs/
-make html
+Automatic backups are stored in `backups/`:
+```
+backups/
+├── config/        # Configuration backups
+├── trades/        # Trade history
+└── analytics/     # Performance data
 ```
 
-## Support and Contributing
+## Security Best Practices
 
-- Report issues on GitHub
-- Join our Discord community
-- Submit pull requests
-- Read our contribution guidelines
+1. **API Key Management**
+   - Rotate API keys regularly
+   - Use environment variables
+   - Never commit keys to repository
+
+2. **Wallet Security**
+   - Use hardware wallets
+   - Enable transaction signing
+   - Set trade limits
+
+3. **Network Security**
+   - Enable IP whitelisting
+   - Use rate limiting
+   - Monitor for suspicious activity
+
+## Troubleshooting
+
+### Common Issues
+
+1. **RPC Connection Failures**
+   ```bash
+   # Check RPC status
+   python tools/check_rpc.py
+
+   # Switch RPC endpoint
+   python tools/switch_rpc.py
+   ```
+
+2. **Transaction Errors**
+   ```bash
+   # Verify transaction
+   python tools/verify_tx.py <tx_id>
+
+   # Check account balance
+   python tools/check_balance.py
+   ```
+
+3. **Performance Issues**
+   ```bash
+   # Run diagnostics
+   python tools/diagnostics.py
+
+   # Clear cache
+   python tools/clear_cache.py
+   ```
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Security
+## Support
 
-Please report security issues directly to security@example.com
+For support, please:
+1. Check the [documentation](docs/)
+2. Search [existing issues](issues/)
+3. Create a new issue
+
+## Acknowledgments
+
+- Solana Foundation
+- Jupiter Exchange
+- Helius
+- QuickNode
