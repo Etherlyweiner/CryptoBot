@@ -60,8 +60,13 @@ class TradingBot {
                 throw new Error('Solana Web3 not loaded');
             }
 
-            // Initialize RPC first
-            await this.initializeConnection();
+            // Initialize RPC manager first
+            if (!await window.rpcManager.initialize()) {
+                throw new Error('Failed to initialize RPC connections');
+            }
+
+            // Get initial connection
+            this.state.connection = window.rpcManager.getCurrentConnection();
             
             // Setup event listeners
             this.setupEventListeners();
@@ -84,35 +89,12 @@ class TradingBot {
         }
     }
 
-    async initializeConnection() {
-        const endpoints = window.CONSTANTS.RPC_ENDPOINTS;
-        for (let i = 0; i < endpoints.length; i++) {
-            try {
-                const endpoint = endpoints[i];
-                this.state.connection = new window.solanaWeb3.Connection(endpoint, this.rpcOptions);
-                
-                // Test connection with retries
-                await this.executeWithRetry(
-                    () => this.state.connection.getSlot(),
-                    this.settings.retryAttempts,
-                    this.settings.retryDelay
-                );
-
-                this.state.currentRpcIndex = i;
-                Logger.log('INFO', 'Connected to Solana network', { endpoint });
-                return;
-            } catch (error) {
-                Logger.log('ERROR', `Failed to connect to RPC endpoint: ${endpoints[i]}`, error);
-                continue;
-            }
-        }
-        throw new Error('All RPC endpoints failed');
-    }
-
     async executeWithRetry(operation, maxRetries = 3, delay = 1000) {
         let lastError;
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
+                // Update connection before each attempt
+                this.state.connection = window.rpcManager.getCurrentConnection();
                 return await operation();
             } catch (error) {
                 lastError = error;
