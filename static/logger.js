@@ -1,4 +1,6 @@
-// Optimized logging system
+/**
+ * Logging system with both static and instance methods.
+ */
 class Logger {
     static maxLogs = 100;
     static logQueue = [];
@@ -6,10 +8,17 @@ class Logger {
     static colors = {
         INFO: '#4CAF50',
         ERROR: '#f44336',
-        TRADE: '#2196F3',
-        PRICE: '#FF9800'
+        WARN: '#FF9800',
+        DEBUG: '#2196F3'
     };
 
+    constructor(name) {
+        this.name = name;
+    }
+
+    /**
+     * Initialize the logger.
+     */
     static initialize() {
         Logger.logContainer = document.getElementById('bot-logs');
         if (Logger.logContainer) {
@@ -23,6 +32,23 @@ class Logger {
         }
     }
 
+    /**
+     * Create a log element.
+     */
+    static createLogElement(entry) {
+        const div = document.createElement('div');
+        div.className = 'log-entry';
+        div.style.color = Logger.colors[entry.type] || '#fff';
+        div.textContent = `[${entry.timestamp}] [${entry.type}] ${entry.message}`;
+        if (entry.data) {
+            div.title = JSON.stringify(entry.data, null, 2);
+        }
+        return div;
+    }
+
+    /**
+     * Log a message.
+     */
     static log(type, message, data = null) {
         const timestamp = new Date().toISOString();
         const logEntry = { timestamp, type, message, data };
@@ -52,26 +78,36 @@ class Logger {
         }
     }
 
-    static createLogElement(entry) {
-        const logElement = document.createElement('div');
-        logElement.className = `log-entry ${entry.type.toLowerCase()}`;
-        
-        const time = new Date(entry.timestamp).toLocaleTimeString();
-        logElement.innerHTML = `
-            <span class="timestamp">${time}</span>
-            <span class="type">${entry.type}</span>
-            <span class="message">${entry.message}</span>
-            ${entry.data ? `<pre class="data">${JSON.stringify(entry.data, null, 2)}</pre>` : ''}
-        `;
-        
-        return logElement;
+    /**
+     * Log an info message.
+     */
+    info(message, data = null) {
+        Logger.log('INFO', `[${this.name}] ${message}`, data);
     }
 
-    static clear() {
-        if (Logger.logContainer) {
-            Logger.logContainer.innerHTML = '';
-        }
-        window.botLogs = [];
+    /**
+     * Log an error message.
+     */
+    error(message, error = null) {
+        const errorData = error ? {
+            message: error.message,
+            stack: error.stack
+        } : null;
+        Logger.log('ERROR', `[${this.name}] ${message}`, errorData);
+    }
+
+    /**
+     * Log a warning message.
+     */
+    warn(message, data = null) {
+        Logger.log('WARN', `[${this.name}] ${message}`, data);
+    }
+
+    /**
+     * Log a debug message.
+     */
+    debug(message, data = null) {
+        Logger.log('DEBUG', `[${this.name}] ${message}`, data);
     }
 }
 
@@ -79,3 +115,10 @@ class Logger {
 document.addEventListener('DOMContentLoaded', () => {
     Logger.initialize();
 });
+
+// Export for Node.js and browser
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Logger;
+} else {
+    window.Logger = Logger;
+}

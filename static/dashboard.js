@@ -1,189 +1,193 @@
-// Dashboard functionality
-
+/**
+ * Dashboard functionality
+ */
 class Dashboard {
     constructor() {
-        this.statusUpdateInterval = 1000; // 1 second
-        this.performanceUpdateInterval = 5000; // 5 seconds
+        this.logger = new Logger('Dashboard');
+        this.updateInterval = 5000; // 5 seconds
         this.isRunning = false;
+        this.bot = null;
         
         // Initialize UI
-        this.initializeUI();
-        
-        // Start update loops
-        this.startUpdateLoops();
+        document.addEventListener('DOMContentLoaded', () => {
+            this.initializeUI();
+            this.initializeBot();
+        });
     }
     
     initializeUI() {
-        // Button handlers
-        document.getElementById('startBtn').addEventListener('click', () => this.startBot());
-        document.getElementById('stopBtn').addEventListener('click', () => this.stopBot());
-        
-        // Initial updates
-        this.updateStatus();
-        this.updatePerformance();
-        this.updatePositions();
+        // Get UI elements
+        this.elements = {
+            connectWallet: document.getElementById('connect-wallet'),
+            startBot: document.getElementById('start-bot'),
+            walletStatus: document.getElementById('wallet-status'),
+            botStatus: document.getElementById('bot-status'),
+            totalTrades: document.getElementById('total-trades'),
+            winRate: document.getElementById('win-rate'),
+            totalPL: document.getElementById('total-pl'),
+            portfolioValue: document.getElementById('portfolio-value'),
+            tradeSize: document.getElementById('trade-size'),
+            stopLoss: document.getElementById('stop-loss'),
+            takeProfit: document.getElementById('take-profit'),
+            positionsTable: document.getElementById('positions-table'),
+            tradesTable: document.getElementById('trades-table')
+        };
+
+        // Add event listeners
+        this.elements.connectWallet.addEventListener('click', () => this.connectWallet());
+        this.elements.startBot.addEventListener('click', () => this.toggleBot());
+        this.elements.tradeSize.addEventListener('change', () => this.updateSettings());
+        this.elements.stopLoss.addEventListener('change', () => this.updateSettings());
+        this.elements.takeProfit.addEventListener('change', () => this.updateSettings());
+
+        this.logger.info('UI initialized');
     }
-    
-    startUpdateLoops() {
-        // Regular status updates
-        setInterval(() => this.updateStatus(), this.statusUpdateInterval);
-        
-        // Regular performance updates
-        setInterval(() => {
-            this.updatePerformance();
-            this.updatePositions();
-        }, this.performanceUpdateInterval);
-    }
-    
-    async startBot() {
+
+    async initializeBot() {
         try {
-            const response = await fetch('/api/bot/start', {
-                method: 'POST'
+            // Create bot instance
+            this.bot = new CryptoBot({
+                tradeSize: parseFloat(this.elements.tradeSize.value),
+                stopLoss: parseFloat(this.elements.stopLoss.value),
+                takeProfit: parseFloat(this.elements.takeProfit.value)
             });
-            
-            if (!response.ok) {
-                throw new Error('Failed to start bot');
-            }
-            
-            this.log('Bot started successfully');
-            this.isRunning = true;
-            this.updateButtonStates();
-            
+
+            // Initialize bot
+            await this.bot.initialize();
+            this.logger.info('Bot initialized');
+
+            // Start update loop
+            this.startUpdateLoop();
+
         } catch (error) {
-            this.log('Error starting bot: ' + error.message, 'error');
+            this.logger.error('Failed to initialize bot:', error);
+            this.updateStatus('Error: ' + error.message);
         }
     }
-    
-    async stopBot() {
-        try {
-            const response = await fetch('/api/bot/stop', {
-                method: 'POST'
-            });
-            
-            if (!response.ok) {
-                throw new Error('Failed to stop bot');
-            }
-            
-            this.log('Bot stopped successfully');
-            this.isRunning = false;
-            this.updateButtonStates();
-            
-        } catch (error) {
-            this.log('Error stopping bot: ' + error.message, 'error');
-        }
+
+    startUpdateLoop() {
+        setInterval(() => this.update(), this.updateInterval);
     }
-    
-    async updateStatus() {
+
+    async update() {
+        if (!this.bot) return;
+
         try {
-            const response = await fetch('/api/bot/status');
-            const status = await response.json();
-            
-            if (status.error) {
-                this.log(status.error, 'error');
-                return;
-            }
-            
-            // Update running state
-            this.isRunning = status.is_running;
-            this.updateButtonStates();
-            
-            // Log any errors
-            if (status.last_error) {
-                this.log(status.last_error, 'error');
-            }
-            
-        } catch (error) {
-            console.error('Error updating status:', error);
-        }
-    }
-    
-    async updatePerformance() {
-        try {
-            const response = await fetch('/api/performance');
-            const performance = await response.json();
-            
-            if (performance.error) {
-                console.error(performance.error);
-                return;
-            }
-            
+            // Update wallet status
+            const isConnected = this.bot.walletManager.isConnected();
+            this.elements.walletStatus.textContent = `Wallet: ${isConnected ? 'Connected' : 'Not Connected'}`;
+            this.elements.startBot.disabled = !isConnected;
+
+            // Update bot status
+            this.elements.botStatus.textContent = `Bot: ${this.isRunning ? 'Running' : 'Stopped'}`;
+
             // Update performance metrics
-            document.getElementById('totalProfit').textContent = 
-                performance.total_profit.toFixed(4) + ' SOL';
-            document.getElementById('totalTrades').textContent = 
-                performance.total_trades;
-            document.getElementById('winRate').textContent = 
-                performance.win_rate.toFixed(1) + '%';
-            document.getElementById('dailyVolume').textContent = 
-                performance.daily_volume.toFixed(4) + ' SOL';
-            
+            const analytics = this.bot.analytics.getSummary();
+            this.elements.totalTrades.textContent = analytics.metrics.totalTrades;
+            this.elements.winRate.textContent = (analytics.metrics.winRate * 100).toFixed(1) + '%';
+            this.elements.totalPL.textContent = analytics.metrics.totalProfitLoss.toFixed(4) + ' SOL';
+            this.elements.portfolioValue.textContent = analytics.risk.portfolioValue.toFixed(4) + ' SOL';
+
+            // Update positions table
+            this.updatePositionsTable(analytics.positions);
+
+            // Update trades table
+            this.updateTradesTable(analytics.recentTrades);
+
         } catch (error) {
-            console.error('Error updating performance:', error);
+            this.logger.error('Failed to update dashboard:', error);
         }
     }
-    
-    async updatePositions() {
+
+    updatePositionsTable(positions) {
+        this.elements.positionsTable.innerHTML = positions.map(pos => `
+            <tr>
+                <td class="px-6 py-4">${pos.token}</td>
+                <td class="px-6 py-4">${pos.entryPrice.toFixed(4)}</td>
+                <td class="px-6 py-4">${pos.currentPrice.toFixed(4)}</td>
+                <td class="px-6 py-4">${pos.size.toFixed(4)}</td>
+                <td class="px-6 py-4 ${pos.profitLoss >= 0 ? 'text-green-500' : 'text-red-500'}">
+                    ${pos.profitLoss.toFixed(4)}
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    updateTradesTable(trades) {
+        this.elements.tradesTable.innerHTML = trades.map(trade => `
+            <tr>
+                <td class="px-6 py-4">${new Date(trade.timestamp).toLocaleString()}</td>
+                <td class="px-6 py-4">${trade.token}</td>
+                <td class="px-6 py-4">${trade.side}</td>
+                <td class="px-6 py-4">${trade.price.toFixed(4)}</td>
+                <td class="px-6 py-4">${trade.size.toFixed(4)}</td>
+                <td class="px-6 py-4 ${trade.profitLoss >= 0 ? 'text-green-500' : 'text-red-500'}">
+                    ${trade.profitLoss ? trade.profitLoss.toFixed(4) : '-'}
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    async connectWallet() {
         try {
-            const response = await fetch('/api/positions');
-            const positions = await response.json();
-            
-            if (positions.error) {
-                console.error(positions.error);
-                return;
+            if (!this.bot) {
+                throw new Error('Bot not initialized');
             }
-            
-            // Clear existing rows
-            const table = document.getElementById('positionsTable');
-            table.innerHTML = '';
-            
-            // Add position rows
-            positions.forEach(position => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap">${position.token}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">${position.size.toFixed(4)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">${position.entry_price.toFixed(4)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">${position.current_price.toFixed(4)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap ${position.pnl >= 0 ? 'text-green-600' : 'text-red-600'}">
-                        ${position.pnl.toFixed(4)}
-                    </td>
-                `;
-                table.appendChild(row);
-            });
-            
+
+            const connected = await this.bot.walletManager.connect();
+            if (connected) {
+                this.logger.info('Wallet connected');
+                this.elements.connectWallet.textContent = 'Disconnect Wallet';
+                this.elements.startBot.disabled = false;
+            }
+
         } catch (error) {
-            console.error('Error updating positions:', error);
+            this.logger.error('Failed to connect wallet:', error);
+            this.updateStatus('Error: ' + error.message);
         }
     }
-    
-    updateButtonStates() {
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        
-        startBtn.disabled = this.isRunning;
-        stopBtn.disabled = !this.isRunning;
-        
-        startBtn.classList.toggle('opacity-50', this.isRunning);
-        stopBtn.classList.toggle('opacity-50', !this.isRunning);
-    }
-    
-    log(message, type = 'info') {
-        const log = document.getElementById('statusLog');
-        const entry = document.createElement('div');
-        
-        entry.className = type === 'error' ? 'text-red-600' : 'text-gray-800';
-        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-        
-        log.insertBefore(entry, log.firstChild);
-        
-        // Limit log entries
-        while (log.children.length > 100) {
-            log.removeChild(log.lastChild);
+
+    async toggleBot() {
+        try {
+            if (!this.bot) {
+                throw new Error('Bot not initialized');
+            }
+
+            if (this.isRunning) {
+                await this.bot.stop();
+                this.isRunning = false;
+                this.elements.startBot.textContent = 'Start Bot';
+                this.logger.info('Bot stopped');
+            } else {
+                await this.bot.start();
+                this.isRunning = true;
+                this.elements.startBot.textContent = 'Stop Bot';
+                this.logger.info('Bot started');
+            }
+
+        } catch (error) {
+            this.logger.error('Failed to toggle bot:', error);
+            this.updateStatus('Error: ' + error.message);
         }
+    }
+
+    updateSettings() {
+        if (!this.bot) return;
+
+        const settings = {
+            tradeSize: parseFloat(this.elements.tradeSize.value),
+            stopLoss: parseFloat(this.elements.stopLoss.value),
+            takeProfit: parseFloat(this.elements.takeProfit.value)
+        };
+
+        this.bot.updateSettings(settings);
+        this.logger.info('Settings updated:', settings);
+    }
+
+    updateStatus(message) {
+        this.elements.botStatus.textContent = message;
     }
 }
 
-// Initialize dashboard when page loads
-document.addEventListener('DOMContentLoaded', () => {
-    window.dashboard = new Dashboard();
-});
+// Initialize dashboard
+const dashboard = new Dashboard();
