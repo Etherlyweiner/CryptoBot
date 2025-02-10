@@ -10,6 +10,8 @@
     --border-color: #ddd;
     --scrollbar-thumb: var(--primary-color);
     --scrollbar-track: transparent;
+    color-scheme: light dark;
+    forced-color-adjust: auto;
 }
 
 /* Reset and base styles */
