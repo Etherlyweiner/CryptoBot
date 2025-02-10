@@ -1,269 +1,189 @@
+// Dashboard functionality
+
 class Dashboard {
     constructor() {
-        this.state = {
-            isInitialized: false,
-            lastUpdate: null,
-            updateInterval: 5000,  // 5 seconds
-            chartPeriod: '1d',     // 1 day default
-            selectedStrategy: null,
-            selectedToken: null
-        };
-
-        // Chart configurations
-        this.charts = {
-            pnl: null,
-            volume: null,
-            strategies: null,
-            tokens: null
-        };
+        this.statusUpdateInterval = 1000; // 1 second
+        this.performanceUpdateInterval = 5000; // 5 seconds
+        this.isRunning = false;
+        
+        // Initialize UI
+        this.initializeUI();
+        
+        // Start update loops
+        this.startUpdateLoops();
     }
-
-    async initialize() {
+    
+    initializeUI() {
+        // Button handlers
+        document.getElementById('startBtn').addEventListener('click', () => this.startBot());
+        document.getElementById('stopBtn').addEventListener('click', () => this.stopBot());
+        
+        // Initial updates
+        this.updateStatus();
+        this.updatePerformance();
+        this.updatePositions();
+    }
+    
+    startUpdateLoops() {
+        // Regular status updates
+        setInterval(() => this.updateStatus(), this.statusUpdateInterval);
+        
+        // Regular performance updates
+        setInterval(() => {
+            this.updatePerformance();
+            this.updatePositions();
+        }, this.performanceUpdateInterval);
+    }
+    
+    async startBot() {
         try {
-            // Initialize charts
-            await this.initializeCharts();
+            const response = await fetch('/api/bot/start', {
+                method: 'POST'
+            });
             
-            // Start update loop
-            this.startUpdateLoop();
+            if (!response.ok) {
+                throw new Error('Failed to start bot');
+            }
             
-            // Initialize event listeners
-            this.setupEventListeners();
+            this.log('Bot started successfully');
+            this.isRunning = true;
+            this.updateButtonStates();
             
-            this.state.isInitialized = true;
-            Logger.log('INFO', 'Dashboard initialized');
-            return true;
         } catch (error) {
-            Logger.log('ERROR', 'Failed to initialize dashboard', error);
-            return false;
+            this.log('Error starting bot: ' + error.message, 'error');
         }
     }
-
-    async initializeCharts() {
-        // Initialize P&L chart
-        this.charts.pnl = new Chart(
-            document.getElementById('pnl-chart').getContext('2d'),
-            this.getPnLChartConfig()
-        );
-
-        // Initialize volume chart
-        this.charts.volume = new Chart(
-            document.getElementById('volume-chart').getContext('2d'),
-            this.getVolumeChartConfig()
-        );
-
-        // Initialize strategy performance chart
-        this.charts.strategies = new Chart(
-            document.getElementById('strategy-chart').getContext('2d'),
-            this.getStrategyChartConfig()
-        );
-
-        // Initialize token performance chart
-        this.charts.tokens = new Chart(
-            document.getElementById('token-chart').getContext('2d'),
-            this.getTokenChartConfig()
-        );
-    }
-
-    startUpdateLoop() {
-        setInterval(() => this.updateDashboard(), this.state.updateInterval);
-    }
-
-    setupEventListeners() {
-        // Period selector
-        document.getElementById('period-selector').addEventListener('change', (e) => {
-            this.state.chartPeriod = e.target.value;
-            this.updateDashboard();
-        });
-
-        // Strategy selector
-        document.getElementById('strategy-selector').addEventListener('change', (e) => {
-            this.state.selectedStrategy = e.target.value;
-            this.updateStrategyView();
-        });
-
-        // Token selector
-        document.getElementById('token-selector').addEventListener('change', (e) => {
-            this.state.selectedToken = e.target.value;
-            this.updateTokenView();
-        });
-    }
-
-    async updateDashboard() {
+    
+    async stopBot() {
         try {
-            // Get latest performance data
-            const stats = await window.tradingBot.performanceAnalytics.updateStats();
+            const response = await fetch('/api/bot/stop', {
+                method: 'POST'
+            });
             
-            // Update summary metrics
-            this.updateSummaryMetrics(stats);
+            if (!response.ok) {
+                throw new Error('Failed to stop bot');
+            }
             
-            // Update charts
-            this.updateCharts(stats);
+            this.log('Bot stopped successfully');
+            this.isRunning = false;
+            this.updateButtonStates();
             
-            // Update alerts
-            this.updateAlerts();
-            
-            this.state.lastUpdate = Date.now();
         } catch (error) {
-            Logger.log('ERROR', 'Failed to update dashboard', error);
+            this.log('Error stopping bot: ' + error.message, 'error');
         }
     }
-
-    updateSummaryMetrics(stats) {
-        // Update total P&L
-        document.getElementById('total-pnl').textContent = 
-            this.formatCurrency(stats.profitLoss);
-
-        // Update win rate
-        document.getElementById('win-rate').textContent = 
-            this.formatPercentage(stats.winRate);
-
-        // Update volume
-        document.getElementById('total-volume').textContent = 
-            this.formatCurrency(stats.volume);
-
-        // Update trade count
-        document.getElementById('trade-count').textContent = 
-            stats.totalTrades.toString();
-    }
-
-    updateCharts(stats) {
-        // Update P&L chart
-        this.updatePnLChart(stats);
-        
-        // Update volume chart
-        this.updateVolumeChart(stats);
-        
-        // Update strategy performance chart
-        this.updateStrategyChart(stats);
-        
-        // Update token performance chart
-        this.updateTokenChart(stats);
-    }
-
-    updateAlerts() {
-        const alertsContainer = document.getElementById('alerts-container');
-        alertsContainer.innerHTML = '';
-
-        const alerts = window.tradingBot.performanceAnalytics.state.alerts;
-        
-        for (const alert of alerts) {
-            const alertElement = document.createElement('div');
-            alertElement.className = `alert alert-${alert.severity.toLowerCase()}`;
-            alertElement.innerHTML = `
-                <strong>${alert.type}:</strong> ${alert.message}
-                <small>${this.formatTimestamp(alert.timestamp)}</small>
-            `;
-            alertsContainer.appendChild(alertElement);
+    
+    async updateStatus() {
+        try {
+            const response = await fetch('/api/bot/status');
+            const status = await response.json();
+            
+            if (status.error) {
+                this.log(status.error, 'error');
+                return;
+            }
+            
+            // Update running state
+            this.isRunning = status.is_running;
+            this.updateButtonStates();
+            
+            // Log any errors
+            if (status.last_error) {
+                this.log(status.last_error, 'error');
+            }
+            
+        } catch (error) {
+            console.error('Error updating status:', error);
         }
     }
-
-    // Chart configuration getters
-    getPnLChartConfig() {
-        return {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Profit/Loss',
-                    data: [],
-                    borderColor: 'rgb(75, 192, 192)',
-                    tension: 0.1
-                }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
+    
+    async updatePerformance() {
+        try {
+            const response = await fetch('/api/performance');
+            const performance = await response.json();
+            
+            if (performance.error) {
+                console.error(performance.error);
+                return;
             }
-        };
+            
+            // Update performance metrics
+            document.getElementById('totalProfit').textContent = 
+                performance.total_profit.toFixed(4) + ' SOL';
+            document.getElementById('totalTrades').textContent = 
+                performance.total_trades;
+            document.getElementById('winRate').textContent = 
+                performance.win_rate.toFixed(1) + '%';
+            document.getElementById('dailyVolume').textContent = 
+                performance.daily_volume.toFixed(4) + ' SOL';
+            
+        } catch (error) {
+            console.error('Error updating performance:', error);
+        }
     }
-
-    getVolumeChartConfig() {
-        return {
-            type: 'bar',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Volume',
-                    data: [],
-                    backgroundColor: 'rgb(54, 162, 235)'
-                }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
+    
+    async updatePositions() {
+        try {
+            const response = await fetch('/api/positions');
+            const positions = await response.json();
+            
+            if (positions.error) {
+                console.error(positions.error);
+                return;
             }
-        };
+            
+            // Clear existing rows
+            const table = document.getElementById('positionsTable');
+            table.innerHTML = '';
+            
+            // Add position rows
+            positions.forEach(position => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">${position.token}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${position.size.toFixed(4)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${position.entry_price.toFixed(4)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">${position.current_price.toFixed(4)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap ${position.pnl >= 0 ? 'text-green-600' : 'text-red-600'}">
+                        ${position.pnl.toFixed(4)}
+                    </td>
+                `;
+                table.appendChild(row);
+            });
+            
+        } catch (error) {
+            console.error('Error updating positions:', error);
+        }
     }
-
-    getStrategyChartConfig() {
-        return {
-            type: 'doughnut',
-            data: {
-                labels: [],
-                datasets: [{
-                    data: [],
-                    backgroundColor: [
-                        'rgb(255, 99, 132)',
-                        'rgb(54, 162, 235)',
-                        'rgb(255, 206, 86)'
-                    ]
-                }]
-            },
-            options: {
-                responsive: true
-            }
-        };
+    
+    updateButtonStates() {
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        
+        startBtn.disabled = this.isRunning;
+        stopBtn.disabled = !this.isRunning;
+        
+        startBtn.classList.toggle('opacity-50', this.isRunning);
+        stopBtn.classList.toggle('opacity-50', !this.isRunning);
     }
-
-    getTokenChartConfig() {
-        return {
-            type: 'bar',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Token Performance',
-                    data: [],
-                    backgroundColor: 'rgb(75, 192, 192)'
-                }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
-            }
-        };
-    }
-
-    // Helper methods
-    formatCurrency(value) {
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD'
-        }).format(value);
-    }
-
-    formatPercentage(value) {
-        return new Intl.NumberFormat('en-US', {
-            style: 'percent',
-            minimumFractionDigits: 2
-        }).format(value);
-    }
-
-    formatTimestamp(timestamp) {
-        return new Date(timestamp).toLocaleString();
+    
+    log(message, type = 'info') {
+        const log = document.getElementById('statusLog');
+        const entry = document.createElement('div');
+        
+        entry.className = type === 'error' ? 'text-red-600' : 'text-gray-800';
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        
+        log.insertBefore(entry, log.firstChild);
+        
+        // Limit log entries
+        while (log.children.length > 100) {
+            log.removeChild(log.lastChild);
+        }
     }
 }
 
-// Export dashboard
-window.Dashboard = Dashboard;
+// Initialize dashboard when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    window.dashboard = new Dashboard();
+});

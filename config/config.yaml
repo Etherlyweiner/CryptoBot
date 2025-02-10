@@ -1,0 +1,62 @@
+# CryptoBot Configuration
+
+# Wallet settings
+wallet:
+  address: ""  # Will be populated when user connects wallet
+  auto_approve_transactions: false
+  connection_timeout_ms: 30000
+  auto_connect: true
+  network: "mainnet-beta"
+
+# Network settings
+network:
+  rpc_url: "https://api.mainnet-beta.solana.com"
+  ws_url: "wss://api.mainnet-beta.solana.com"
+  cluster: "mainnet-beta"
+  commitment: "confirmed"
+
+# Trading settings
+trading:
+  max_concurrent_trades: 5
+  default_trade_size_sol: 0.1
+  max_slippage_percent: 1.0
+  profit_target_percent: 5.0
+  stop_loss_percent: 2.0
+  close_positions_on_stop: true
+  
+# Risk management
+risk:
+  max_position_size_sol: 1.0
+  max_daily_trades: 20
+  max_daily_loss_percent: 5.0
+  max_open_positions: 5
+  min_liquidity_usd: 100000
+  
+# Token discovery
+discovery:
+  min_market_cap_usd: 1000000
+  min_daily_volume_usd: 100000
+  max_price_impact_percent: 2.0
+  blacklisted_tokens: []
+  
+# APIs and services
+apis:
+  birdeye:
+    base_url: "https://public-api.birdeye.so"
+  jupiter:
+    base_url: "https://quote-api.jup.ag/v6"
+  helius:
+    base_url: "https://api.helius.xyz/v0"
+    
+# Monitoring
+monitoring:
+  interval_seconds: 60
+  log_level: "INFO"
+  metrics_port: 9090
+  enable_prometheus: true
+  
+# Security
+security:
+  max_wallet_exposure_percent: 20.0
+  require_wallet_sign: true
+  enable_auto_updates: false
