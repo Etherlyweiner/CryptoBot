@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CryptoBot Tests</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        .controls {
+            margin-bottom: 20px;
+        }
+        
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        .results {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        
+        .error {
+            color: #dc3545;
+        }
+        
+        .success {
+            color: #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CryptoBot Test Suite</h1>
+        
+        <div class="controls">
+            <button onclick="runTests()">Run All Tests</button>
+            <button onclick="clearResults()">Clear Results</button>
+        </div>
+        
+        <div id="results" class="results">
+            Test results will appear here...
+        </div>
+    </div>
+
+    <!-- Load dependencies -->
+    <script src="https://unpkg.com/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
+    
+    <!-- Load application code -->
+    <script src="../static/config.js"></script>
+    <script src="../static/logger.js"></script>
+    <script src="../static/rpc-manager.js"></script>
+    <script src="../static/risk-manager.js"></script>
+    <script src="../static/wallet-security.js"></script>
+    <script src="../static/strategy-framework.js"></script>
+    <script src="../static/strategy-executor.js"></script>
+    <script src="../static/performance-analytics.js"></script>
+    <script src="../static/dashboard.js"></script>
+    <script src="../static/jupiter.js"></script>
+    <script src="../static/trading.js"></script>
+    <script src="../static/token_discovery.js"></script>
+    
+    <!-- Load test code -->
+    <script src="test_utils.js"></script>
+    <script src="unit_tests.js"></script>
+    <script src="integration_tests.js"></script>
+    <script src="run_tests.js"></script>
+    
+    <script>
+        // Override console.log to also write to results div
+        const originalLog = console.log;
+        const originalError = console.error;
+        const resultsDiv = document.getElementById('results');
+        
+        console.log = function() {
+            const args = Array.from(arguments);
+            originalLog.apply(console, args);
+            resultsDiv.innerHTML += args.join(' ') + '\n';
+        };
+        
+        console.error = function() {
+            const args = Array.from(arguments);
+            originalError.apply(console, args);
+            resultsDiv.innerHTML += '<span class="error">' + args.join(' ') + '</span>\n';
+        };
+        
+        async function runTests() {
+            resultsDiv.innerHTML = 'Running tests...\n\n';
+            const runner = new TestRunner();
+            try {
+                await runner.runAllTests();
+                console.log('\nTest suite completed successfully!');
+            } catch (error) {
+                console.error('\nTest suite failed:', error);
+            }
+        }
+        
+        function clearResults() {
+            resultsDiv.innerHTML = 'Test results will appear here...';
+        }
+    </script>
+</body>
+</html>
