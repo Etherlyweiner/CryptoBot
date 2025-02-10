@@ -102,7 +102,17 @@ class TradingBot {
                 return;
             }
             
+            // Initialize RPC connection first
             await this.initializeConnection();
+            
+            // Check for existing wallet connection
+            if (window.solana && window.solana.isPhantom) {
+                const connected = await window.solana.isConnected;
+                if (connected) {
+                    await this.connectWallet(true); // silent connect
+                }
+            }
+            
             this.loadSettings();
             this.setupEventListeners();
             Logger.log('INFO', 'Trading bot initialized', this.settings);
@@ -246,26 +256,55 @@ class TradingBot {
         Logger.log('INFO', 'Event listeners set up');
     }
 
-    async connectWallet() {
+    async connectWallet(silent = false) {
         try {
             if (!window.solana || !window.solana.isPhantom) {
                 throw new Error('Phantom wallet is not installed');
             }
 
-            const resp = await window.solana.connect();
+            let resp;
+            if (silent) {
+                // Try to reconnect to existing session
+                try {
+                    resp = await window.solana.connect({ onlyIfTrusted: true });
+                } catch (e) {
+                    // Not previously connected, skip
+                    return;
+                }
+            } else {
+                // Request new connection
+                resp = await window.solana.connect();
+            }
+
             this.wallet = resp.publicKey;
+
+            // Verify connection with RPC
+            const balance = await this.getSOLBalance();
+            
             Logger.log('INFO', 'Wallet connected', {
                 address: this.wallet.toString(),
-                balance: await this.getSOLBalance()
+                balance: balance
             });
             
             document.getElementById('wallet-status').textContent = 
                 `Wallet: ${this.wallet.toString().slice(0, 4)}...${this.wallet.toString().slice(-4)}`;
             document.getElementById('start-bot').disabled = false;
             
+            // Setup disconnect handler
+            window.solana.on('disconnect', () => {
+                this.wallet = null;
+                document.getElementById('wallet-status').textContent = 'Wallet: Not Connected';
+                document.getElementById('start-bot').disabled = true;
+                if (this.isRunning) {
+                    this.stop();
+                }
+                Logger.log('INFO', 'Wallet disconnected');
+            });
+            
         } catch (error) {
             Logger.log('ERROR', 'Failed to connect wallet', error);
             document.getElementById('wallet-status').textContent = 'Wallet: Error';
+            throw error; // Re-throw to handle in UI
         }
     }
 
