@@ -1,7 +1,7 @@
 // Trading Logic
-const { JUPITER_API, RPC_ENDPOINTS, SOL_MINT } = window.CONSTANTS || {};
+const { JUPITER_API, RPC_ENDPOINTS, SOL_MINT, HELIUS_API_KEY } = window.CONSTANTS || {};
 
-if (!JUPITER_API || !RPC_ENDPOINTS || !SOL_MINT) {
+if (!JUPITER_API || !RPC_ENDPOINTS || !SOL_MINT || !HELIUS_API_KEY) {
     console.error('Required constants are not defined. Make sure constants are loaded before this script.');
 }
 
@@ -88,10 +88,8 @@ class TradingBot {
         this.rpcOptions = {
             commitment: 'confirmed',
             httpHeaders: {
-                'Origin': window.location.origin,
-                'x-api-key': window.CONSTANTS.HELIUS_API_KEY
+                'x-api-key': HELIUS_API_KEY
             },
-            fetch: window.fetch,
             confirmTransactionInitialTimeout: 60000,
             disableRetryOnRateLimit: false
         };
@@ -131,6 +129,7 @@ class TradingBot {
                         retries--;
                         if (retries === 0) throw error;
                         await new Promise(resolve => setTimeout(resolve, 1000));
+                        Logger.log('INFO', 'Retrying RPC connection', { retries, error: error.message });
                     }
                 }
             } catch (error) {
