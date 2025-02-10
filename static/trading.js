@@ -115,17 +115,8 @@ class TradingBot {
     async initializeConnection() {
         for (let i = 0; i < RPC_ENDPOINTS.length; i++) {
             try {
-                const endpoint = RPC_ENDPOINTS[i];
-                this.connection = new window.solanaWeb3.Connection(endpoint, {
-                    commitment: 'confirmed',
-                    httpHeaders: {
-                        'Origin': window.location.origin,
-                        'x-api-key': window.CONSTANTS.HELIUS_API_KEY
-                    },
-                    fetch: window.fetch,
-                    confirmTransactionInitialTimeout: 60000,
-                    disableRetryOnRateLimit: false
-                });
+                const endpoint = `${RPC_ENDPOINTS[i]}?api-key=${window.CONSTANTS.HELIUS_API_KEY}`;
+                this.connection = new window.solanaWeb3.Connection(endpoint, this.rpcOptions);
                 
                 // Test the connection with retries
                 let retries = 3;
@@ -152,17 +143,8 @@ class TradingBot {
     async fallbackToNextRpc() {
         const nextIndex = (this.currentRpcIndex + 1) % RPC_ENDPOINTS.length;
         try {
-            const endpoint = RPC_ENDPOINTS[nextIndex];
-            this.connection = new window.solanaWeb3.Connection(endpoint, {
-                commitment: 'confirmed',
-                httpHeaders: {
-                    'Origin': window.location.origin,
-                    'x-api-key': window.CONSTANTS.HELIUS_API_KEY
-                },
-                fetch: window.fetch,
-                confirmTransactionInitialTimeout: 60000,
-                disableRetryOnRateLimit: false
-            });
+            const endpoint = `${RPC_ENDPOINTS[nextIndex]}?api-key=${window.CONSTANTS.HELIUS_API_KEY}`;
+            this.connection = new window.solanaWeb3.Connection(endpoint, this.rpcOptions);
             
             // Test the connection
             await this.connection.getSlot();
