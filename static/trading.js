@@ -65,6 +65,12 @@ class TradingBot {
                 throw new Error('Failed to initialize RPC connections');
             }
 
+            // Initialize risk manager
+            this.riskManager = new window.RiskManager(this);
+            
+            // Initialize wallet security
+            this.walletSecurity = new window.WalletSecurity();
+
             // Get initial connection
             this.state.connection = window.rpcManager.getCurrentConnection();
             
@@ -74,14 +80,6 @@ class TradingBot {
             // Load saved settings
             this.loadSettings();
             
-            // Auto-connect if wallet was previously connected
-            if (window.solana?.isPhantom) {
-                const connected = await window.solana.isConnected;
-                if (connected) {
-                    await this.handleWalletConnect(true);
-                }
-            }
-
             Logger.log('INFO', 'Trading bot initialized', this.settings);
         } catch (error) {
             Logger.log('ERROR', 'Failed to initialize trading bot', error);
@@ -105,6 +103,54 @@ class TradingBot {
             }
         }
         throw lastError;
+    }
+
+    async executeTrade(token, amount, side) {
+        try {
+            // Validate wallet security first
+            const walletStatus = await this.walletSecurity.validateWallet();
+            if (!walletStatus.valid) {
+                throw new Error(`Wallet security check failed: ${walletStatus.reason}`);
+            }
+
+            // Check trade viability through risk manager
+            const tradeCheck = await this.riskManager.checkTradeViability(token, amount, this.getTokenPrice(token));
+            if (!tradeCheck.viable) {
+                throw new Error(`Trade not viable: ${tradeCheck.reason}`);
+            }
+
+            // Calculate position size
+            const positionSize = await this.riskManager.calculatePositionSize(token, this.getTokenPrice(token));
+            if (amount > positionSize) {
+                amount = positionSize;
+                Logger.log('INFO', 'Trade size adjusted due to risk limits', { original: amount, adjusted: positionSize });
+            }
+
+            // Create and validate transaction
+            const transaction = await this.createTradeTransaction(token, amount, side);
+            const txValidation = await this.walletSecurity.validateTransaction(transaction);
+            if (!txValidation.valid) {
+                throw new Error(`Transaction validation failed: ${txValidation.reason}`);
+            }
+
+            // Execute trade with retry logic
+            return await this.executeWithRetry(async () => {
+                const signedTx = await this.walletSecurity.signTransaction(transaction);
+                const result = await this.state.connection.sendRawTransaction(signedTx.serialize());
+                
+                Logger.log('INFO', 'Trade executed successfully', {
+                    token,
+                    amount,
+                    side,
+                    txId: result
+                });
+                
+                return result;
+            });
+        } catch (error) {
+            Logger.log('ERROR', 'Trade execution failed', error);
+            throw error;
+        }
     }
 
     setupEventListeners() {
