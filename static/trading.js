@@ -71,6 +71,10 @@ class TradingBot {
             // Initialize wallet security
             this.walletSecurity = new window.WalletSecurity();
 
+            // Initialize strategy executor
+            this.strategyExecutor = new window.StrategyExecutor(this);
+            await this.strategyExecutor.initialize();
+
             // Get initial connection
             this.state.connection = window.rpcManager.getCurrentConnection();
             
@@ -151,6 +155,68 @@ class TradingBot {
             Logger.log('ERROR', 'Trade execution failed', error);
             throw error;
         }
+    }
+
+    async getMarketData() {
+        try {
+            const tokens = await this.tokenDiscovery.getActiveTokens();
+            const marketData = {};
+
+            for (const token of tokens) {
+                const price = await this.getTokenPrice(token);
+                const volume = await this.getTokenVolume(token);
+                const priceHistory = await this.getPriceHistory(token);
+                const volumeHistory = await this.getVolumeHistory(token);
+
+                marketData[token] = {
+                    price,
+                    volume,
+                    prices: priceHistory,
+                    volumes: volumeHistory,
+                    timestamp: Date.now()
+                };
+            }
+
+            return marketData;
+        } catch (error) {
+            Logger.log('ERROR', 'Failed to get market data', error);
+            throw error;
+        }
+    }
+
+    async startTrading() {
+        try {
+            // Activate default strategies
+            await this.strategyExecutor.activateStrategy('Momentum');
+            await this.strategyExecutor.activateStrategy('MeanReversion');
+            
+            Logger.log('INFO', 'Trading started');
+        } catch (error) {
+            Logger.log('ERROR', 'Failed to start trading', error);
+            throw error;
+        }
+    }
+
+    async stopTrading() {
+        try {
+            // Deactivate all strategies
+            for (const strategy of this.strategyExecutor.activeStrategies) {
+                await this.strategyExecutor.deactivateStrategy(strategy);
+            }
+            
+            Logger.log('INFO', 'Trading stopped');
+        } catch (error) {
+            Logger.log('ERROR', 'Failed to stop trading', error);
+            throw error;
+        }
+    }
+
+    getPerformanceStats() {
+        return {
+            ...this.strategyExecutor.getPerformanceStats(),
+            riskMetrics: this.riskManager.getRiskMetrics(),
+            walletStatus: this.walletSecurity.getStatus()
+        };
     }
 
     setupEventListeners() {
