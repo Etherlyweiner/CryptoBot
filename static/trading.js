@@ -75,6 +75,14 @@ class TradingBot {
             this.strategyExecutor = new window.StrategyExecutor(this);
             await this.strategyExecutor.initialize();
 
+            // Initialize performance analytics
+            this.performanceAnalytics = new window.PerformanceAnalytics(this);
+            await this.performanceAnalytics.initialize();
+
+            // Initialize dashboard
+            this.dashboard = new window.Dashboard();
+            await this.dashboard.initialize();
+
             // Get initial connection
             this.state.connection = window.rpcManager.getCurrentConnection();
             
@@ -140,16 +148,24 @@ class TradingBot {
             // Execute trade with retry logic
             return await this.executeWithRetry(async () => {
                 const signedTx = await this.walletSecurity.signTransaction(transaction);
-                const result = await this.state.connection.sendRawTransaction(signedTx.serialize());
+                const txId = await this.state.connection.sendRawTransaction(signedTx.serialize());
                 
-                Logger.log('INFO', 'Trade executed successfully', {
+                // Record trade performance
+                const trade = {
                     token,
                     amount,
                     side,
-                    txId: result
-                });
+                    txId,
+                    price: await this.getTokenPrice(token),
+                    timestamp: Date.now(),
+                    strategy: this.strategyExecutor.getCurrentStrategy()?.name
+                };
                 
-                return result;
+                await this.performanceAnalytics.recordTrade(trade);
+                
+                Logger.log('INFO', 'Trade executed successfully', trade);
+                
+                return txId;
             });
         } catch (error) {
             Logger.log('ERROR', 'Trade execution failed', error);
@@ -213,9 +229,10 @@ class TradingBot {
 
     getPerformanceStats() {
         return {
-            ...this.strategyExecutor.getPerformanceStats(),
+            ...this.performanceAnalytics.updateStats(),
             riskMetrics: this.riskManager.getRiskMetrics(),
-            walletStatus: this.walletSecurity.getStatus()
+            walletStatus: this.walletSecurity.getStatus(),
+            strategyStats: this.strategyExecutor.getPerformanceStats()
         };
     }
 
