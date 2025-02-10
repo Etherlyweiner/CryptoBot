@@ -120,7 +120,7 @@ class TradingBot {
                     commitment: 'confirmed',
                     httpHeaders: {
                         'Origin': window.location.origin,
-                        'Authorization': `Bearer ${window.CONSTANTS.HELIUS_API_KEY}`
+                        'x-api-key': window.CONSTANTS.HELIUS_API_KEY
                     },
                     fetch: window.fetch,
                     confirmTransactionInitialTimeout: 60000,
@@ -157,7 +157,7 @@ class TradingBot {
                 commitment: 'confirmed',
                 httpHeaders: {
                     'Origin': window.location.origin,
-                    'Authorization': `Bearer ${window.CONSTANTS.HELIUS_API_KEY}`
+                    'x-api-key': window.CONSTANTS.HELIUS_API_KEY
                 },
                 fetch: window.fetch,
                 confirmTransactionInitialTimeout: 60000,
