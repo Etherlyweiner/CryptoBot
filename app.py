@@ -5,7 +5,7 @@ import logging
 import yaml
 from typing import Optional
 import asyncio
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 from bot import CryptoBot
 
 # Configure logging
@@ -25,6 +25,11 @@ bot: Optional[CryptoBot] = None
 def index():
     """Render main dashboard."""
     return render_template('index.html')
+
+@app.route('/static/<path:path>')
+def serve_static(path):
+    """Serve static files."""
+    return send_from_directory('static', path)
 
 @app.route('/config')
 def get_config():
