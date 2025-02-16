@@ -3,127 +3,99 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CryptoBot Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <title>Photon DEX Trading Bot</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .button.stop {
+            background-color: #f44336;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+    </style>
 </head>
-<body class="bg-gray-100">
-    <div class="container mx-auto px-4 py-8">
-        <header class="mb-8">
-            <h1 class="text-3xl font-bold text-gray-900">CryptoBot Dashboard</h1>
-            <p class="text-gray-600">Automated Solana Trading Bot</p>
-        </header>
-
-        <!-- Bot Controls -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div class="bg-white rounded-lg shadow p-6">
-                <h2 class="text-xl font-semibold mb-4">Bot Controls</h2>
-                <div class="flex space-x-4">
-                    <button id="connect-wallet" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-                        Connect Wallet
-                    </button>
-                    <button id="start-bot" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" disabled>
-                        Start Bot
-                    </button>
-                </div>
-                <div class="mt-4">
-                    <p id="wallet-status" class="text-gray-600">Wallet: Not Connected</p>
-                    <p id="bot-status" class="text-gray-600">Bot: Stopped</p>
-                </div>
-            </div>
-
-            <div class="bg-white rounded-lg shadow p-6">
-                <h2 class="text-xl font-semibold mb-4">Performance Metrics</h2>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <p class="text-gray-600">Total Trades</p>
-                        <p id="total-trades" class="text-2xl font-bold">0</p>
-                    </div>
-                    <div>
-                        <p class="text-gray-600">Win Rate</p>
-                        <p id="win-rate" class="text-2xl font-bold">0%</p>
-                    </div>
-                    <div>
-                        <p class="text-gray-600">Total P/L</p>
-                        <p id="total-pl" class="text-2xl font-bold">0 SOL</p>
-                    </div>
-                    <div>
-                        <p class="text-gray-600">Portfolio Value</p>
-                        <p id="portfolio-value" class="text-2xl font-bold">0 SOL</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Trading Settings -->
-        <div class="bg-white rounded-lg shadow p-6 mb-8">
-            <h2 class="text-xl font-semibold mb-4">Trading Settings</h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div>
-                    <label class="block text-gray-700 mb-2" for="trade-size">Trade Size (SOL)</label>
-                    <input type="number" id="trade-size" class="w-full px-3 py-2 border rounded" value="0.1" step="0.1">
-                </div>
-                <div>
-                    <label class="block text-gray-700 mb-2" for="stop-loss">Stop Loss (%)</label>
-                    <input type="number" id="stop-loss" class="w-full px-3 py-2 border rounded" value="2" step="0.1">
-                </div>
-                <div>
-                    <label class="block text-gray-700 mb-2" for="take-profit">Take Profit (%)</label>
-                    <input type="number" id="take-profit" class="w-full px-3 py-2 border rounded" value="5" step="0.1">
-                </div>
-            </div>
-        </div>
-
-        <!-- Active Positions -->
-        <div class="bg-white rounded-lg shadow p-6 mb-8">
-            <h2 class="text-xl font-semibold mb-4">Active Positions</h2>
-            <div class="overflow-x-auto">
-                <table class="min-w-full table-auto">
-                    <thead>
-                        <tr class="bg-gray-50">
-                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Token</th>
-                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Entry Price</th>
-                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Current Price</th>
-                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Size</th>
-                            <th class="px-6 py-3 text-left text-gray-500 font-medium">P/L</th>
-                        </tr>
-                    </thead>
-                    <tbody id="positions-table">
-                        <!-- Positions will be populated here -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Recent Trades -->
-        <div class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-xl font-semibold mb-4">Recent Trades</h2>
-            <div class="overflow-x-auto">
-                <table class="min-w-full table-auto">
-                    <thead>
-                        <tr class="bg-gray-50">
-                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Time</th>
-                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Token</th>
-                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Side</th>
-                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Price</th>
-                            <th class="px-6 py-3 text-left text-gray-500 font-medium">Size</th>
-                            <th class="px-6 py-3 text-left text-gray-500 font-medium">P/L</th>
-                        </tr>
-                    </thead>
-                    <tbody id="trades-table">
-                        <!-- Trades will be populated here -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
+<body>
+    <div class="container">
+        <h1>Photon DEX Trading Bot</h1>
+        <p>Control panel for automated trading on Photon DEX.</p>
+        
+        <button id="startBtn" class="button">Start Bot</button>
+        <button id="stopBtn" class="button stop">Stop Bot</button>
+        
+        <div id="status" class="status"></div>
     </div>
 
-    <!-- Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.87.6/lib/index.iife.min.js"></script>
-    <script src="/static/logger.js"></script>
-    <script src="/static/rpc-manager.js"></script>
-    <script src="/static/wallet-manager.js"></script>
-    <script src="/static/token-discovery.js"></script>
-    <script src="/static/analytics.js"></script>
-    <script src="/static/trading.js"></script>
+    <script>
+        document.getElementById('startBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/start', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                const statusDiv = document.getElementById('status');
+                statusDiv.textContent = data.message;
+                statusDiv.className = 'status ' + (data.status === 'success' ? 'success' : 'error');
+            } catch (error) {
+                console.error('Error:', error);
+                const statusDiv = document.getElementById('status');
+                statusDiv.textContent = 'Failed to start bot: ' + error.message;
+                statusDiv.className = 'status error';
+            }
+        });
+
+        document.getElementById('stopBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/stop', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                const statusDiv = document.getElementById('status');
+                statusDiv.textContent = data.message;
+                statusDiv.className = 'status ' + (data.status === 'success' ? 'success' : 'error');
+            } catch (error) {
+                console.error('Error:', error);
+                const statusDiv = document.getElementById('status');
+                statusDiv.textContent = 'Failed to stop bot: ' + error.message;
+                statusDiv.className = 'status error';
+            }
+        });
+    </script>
 </body>
 </html>

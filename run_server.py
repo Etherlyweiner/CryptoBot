@@ -18,7 +18,7 @@ def run_server():
     print(f"Serving files from: {static_dir}")
     
     # Server configuration
-    PORT = 8080
+    PORT = 8000
     HOSTNAME = "localhost"
     
     class CustomHandler(http.server.SimpleHTTPRequestHandler):

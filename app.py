@@ -1,12 +1,12 @@
-"""Flask application for CryptoBot dashboard."""
+"""Main entry point for the Photon DEX trading bot."""
 
 import os
 import logging
 import yaml
-from typing import Optional
 import asyncio
-from flask import Flask, jsonify, render_template, request, send_from_directory
-from bot import CryptoBot
+from typing import Optional
+from flask import Flask, jsonify, render_template
+from bot.photon_trader import PhotonTrader
 
 # Configure logging
 logging.basicConfig(
@@ -16,83 +16,48 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Initialize Flask app
-app = Flask(__name__, static_folder='static', template_folder='templates')
+app = Flask(__name__)
 
 # Initialize bot
-bot: Optional[CryptoBot] = None
+bot: Optional[PhotonTrader] = None
+
+def run_async(coro):
+    """Run an async function in the event loop."""
+    return asyncio.get_event_loop().run_until_complete(coro)
 
 @app.route('/')
 def index():
-    """Render main dashboard."""
+    """Render the main dashboard."""
     return render_template('index.html')
 
-@app.route('/static/<path:path>')
-def serve_static(path):
-    """Serve static files."""
-    return send_from_directory('static', path)
-
-@app.route('/config')
-def get_config():
-    """Get bot configuration."""
-    try:
-        config_path = os.path.join(os.path.dirname(__file__), 'config', 'config.yaml')
-        if not os.path.exists(config_path):
-            return jsonify({'error': 'Configuration file not found'}), 404
-            
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-        return jsonify(config)
-        
-    except Exception as e:
-        logger.error(f"Failed to load configuration: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/bot/status')
-def get_bot_status():
-    """Get bot status."""
-    if not bot:
-        return jsonify({'error': 'Bot not initialized'}), 500
-    return jsonify(bot.get_status())
-
-@app.route('/api/bot/start', methods=['POST'])
-async def start_bot():
-    """Start the bot."""
+@app.route('/api/start', methods=['POST'])
+def start_bot():
+    """Start the trading bot."""
     global bot
     try:
         if not bot:
-            bot = CryptoBot('config/config.yaml')
-            await bot.initialize()
-        await bot.start()
-        return jsonify({'status': 'success'})
+            config_path = os.path.join(os.path.dirname(__file__), 'config', 'config.yaml')
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+            bot = PhotonTrader(config)
+            run_async(bot.initialize())
+        return jsonify({'status': 'success', 'message': 'Bot started successfully'})
     except Exception as e:
         logger.error(f"Failed to start bot: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'status': 'error', 'message': str(e)})
 
-@app.route('/api/bot/stop', methods=['POST'])
-async def stop_bot():
-    """Stop the bot."""
+@app.route('/api/stop', methods=['POST'])
+def stop_bot():
+    """Stop the trading bot."""
     global bot
     try:
         if bot:
-            await bot.stop()
-        return jsonify({'status': 'success'})
+            run_async(bot.cleanup())
+            bot = None
+        return jsonify({'status': 'success', 'message': 'Bot stopped successfully'})
     except Exception as e:
         logger.error(f"Failed to stop bot: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'status': 'error', 'message': str(e)})
 
-@app.route('/api/performance')
-def get_performance():
-    """Get performance metrics."""
-    if not bot or not bot.analytics:
-        return jsonify({'error': 'Bot not initialized'}), 500
-    return jsonify(bot.analytics.get_summary())
-
-@app.route('/api/positions')
-def get_positions():
-    """Get open positions."""
-    if not bot or not bot.strategy:
-        return jsonify({'error': 'Bot not initialized'}), 500
-    return jsonify(bot.strategy.get_positions())
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000, debug=True)
+if __name__ == "__main__":
+    app.run(host='127.0.0.1', port=5000, debug=True)

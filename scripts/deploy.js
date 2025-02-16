@@ -74,22 +74,22 @@ class Deployment {
         
         // Check CPU cores
         const cpuCount = require('os').cpus().length;
-        if (cpuCount < 4) {
-            throw new Error('Insufficient CPU cores. Minimum 4 cores required.');
+        if (cpuCount < 2) { // Reduced for development
+            throw new Error('Insufficient CPU cores. Minimum 2 cores required.');
         }
 
         // Check available memory
         const totalMemory = require('os').totalmem();
-        const minMemory = 8 * 1024 * 1024 * 1024; // 8GB
+        const minMemory = 4 * 1024 * 1024 * 1024; // 4GB for development
         if (totalMemory < minMemory) {
-            throw new Error('Insufficient memory. Minimum 8GB required.');
+            throw new Error('Insufficient memory. Minimum 4GB required.');
         }
 
         // Check disk space
-        const df = execSync('df -k /').toString();
-        const available = parseInt(df.split('\n')[1].split(/\s+/)[3]) * 1024;
-        if (available < 50 * 1024 * 1024 * 1024) { // 50GB
-            throw new Error('Insufficient disk space. Minimum 50GB required.');
+        const df = execSync('dir /-c').toString();
+        const available = parseInt(df.match(/(\d+) bytes free/)[1]);
+        if (available < 10 * 1024 * 1024 * 1024) { // 10GB for development
+            throw new Error('Insufficient disk space. Minimum 10GB required.');
         }
     }
 

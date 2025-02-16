@@ -1,5 +1,5 @@
 @echo off
-echo Starting CryptoBot Dashboard and Trading System...
+echo Starting CryptoBot System...
 
 :: Check for admin privileges
 net session >nul 2>&1
@@ -29,10 +29,10 @@ if errorlevel 1 (
 :: Set Node.js path
 set PATH=%PATH%;C:\Program Files\nodejs
 
-:: Start the trading bot and dashboard
+:: Start CryptoBot
 cd /d "%~dp0"
-echo Starting CryptoBot services...
-start "CryptoBot Dashboard" /min cmd /c "python start.py"
+echo Starting CryptoBot...
+start "CryptoBot" /min cmd /c "python start.py"
 
 :: Wait for server to start
 echo Waiting for server to start...
@@ -41,8 +41,8 @@ timeout /t 5
 :: Open dashboard in default browser
 start http://localhost:8000
 
-echo CryptoBot system started successfully!
+echo CryptoBot started successfully!
 echo Dashboard is available at: http://localhost:8000
 echo.
-echo Press Ctrl+C to stop all services
+echo Press Ctrl+C to stop CryptoBot
 echo.

@@ -93,6 +93,11 @@ class SystemBuild {
     async createProductionConfig() {
         console.log('Creating production configuration...');
 
+        const configDir = path.join(this.distDir, 'config');
+        if (!fs.existsSync(configDir)) {
+            fs.mkdirSync(configDir, { recursive: true });
+        }
+
         const prodConfig = {
             environment: 'production',
             server: {
@@ -119,7 +124,7 @@ class SystemBuild {
 
         // Write production config
         fs.writeFileSync(
-            path.join(this.distDir, 'config/production.js'),
+            path.join(configDir, 'production.js'),
             `module.exports = ${JSON.stringify(prodConfig, null, 2)};`
         );
     }

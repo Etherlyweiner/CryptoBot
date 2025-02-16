@@ -1,5 +1,5 @@
 """Bot package initialization."""
 
-from .trading_bot import CryptoBot
+from .photon_trader import PhotonTrader
 
-__all__ = ['CryptoBot']
+__all__ = ['PhotonTrader']

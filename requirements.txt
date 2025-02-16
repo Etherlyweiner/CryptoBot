@@ -11,7 +11,7 @@ nest-asyncio==1.5.7
 asyncio==3.4.3
 redis==5.0.1
 aioredis==2.0.1
-websockets>=9.0,<11.0
+websockets==11.0.3
 
 # Data processing
 pandas==2.2.0
@@ -34,8 +34,8 @@ plotly==5.16.1
 black==23.12.1
 isort==5.13.2
 flake8==7.0.0
-pytest==7.4.4
-pytest-asyncio==0.20.3
+pytest==7.4.3
+pytest-asyncio==0.21.1
 pytest-cov==4.1.0
 mypy==1.8.0
 
@@ -46,4 +46,10 @@ bcrypt==4.1.2
 
 # Solana/Web3
 base58>=2.1.1
+
+# Additional dependencies
+flask==3.0.2
 pyyaml==6.0.1
+selenium==4.28.1
+webdriver_manager==4.0.2
+pyautogui==0.9.54
