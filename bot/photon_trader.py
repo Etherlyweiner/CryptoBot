@@ -1,19 +1,20 @@
-"""Photon DEX trading bot for automated memecoin trading."""
+"""Photon DEX trading bot with manual wallet authentication."""
 
 import logging
 import time
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 import re
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.edge.service import Service
+from selenium.webdriver.edge.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
 import pyautogui
+from .token_discovery import TokenMetrics, TokenDiscovery
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class PhotonTrader:
         self.wallet_connected = False
         self.retry_count = 0
         self.max_retries = config['wallet']['max_retries']
+        self.discovery = None
         self._validate_wallet_addresses()
         
     def _validate_wallet_addresses(self):
@@ -46,95 +48,139 @@ class PhotonTrader:
         logger.info(f"Wallet addresses validated. Primary: {primary[:6]}...{primary[-4:]}")
         if secondary:
             logger.info(f"Secondary wallet: {secondary[:6]}...{secondary[-4:]}")
-
-    async def initialize(self):
-        """Initialize the web driver and connect to Photon DEX."""
+            
+    def setup_browser(self):
+        """Set up the Edge browser by attaching to existing session."""
         try:
-            if self.initialized:
-                return
+            logger.info("Attaching to existing Edge browser session...")
+            
+            # Setup Edge options to connect to existing session
+            edge_options = Options()
+            edge_options.add_experimental_option("debuggerAddress", "localhost:9222")
+            
+            # Initialize Edge driver
+            service = Service(EdgeChromiumDriverManager().install())
+            self.driver = webdriver.Edge(service=service, options=edge_options)
+            
+            logger.info("Successfully attached to browser session")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to attach to browser: {str(e)}")
+            return False
+            
+    def check_authentication(self):
+        """Check if we're already authenticated on Photon DEX."""
+        try:
+            # Navigate to discover page
+            current_url = self.driver.current_url
+            if "photon-sol.tinyastro.io" not in current_url:
+                self.driver.get("https://photon-sol.tinyastro.io/en/discover")
+            
+            # Check if we can access the token table
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.CLASS_NAME, "token-table"))
+                )
+                logger.info("Already authenticated on Photon DEX")
+                return True
+            except TimeoutException:
+                logger.warning("Not authenticated on Photon DEX")
+                return False
                 
-            logger.info("Initializing Photon trader...")
+        except Exception as e:
+            logger.error(f"Error checking authentication: {str(e)}")
+            return False
             
-            # Setup Chrome options
-            chrome_options = Options()
-            if self.config['browser']['headless']:
-                chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--start-maximized")
-            chrome_options.add_argument(f"--window-size={self.config['browser']['window_size'][0]},{self.config['browser']['window_size'][1]}")
-            chrome_options.add_argument(f"--user-data-dir={os.path.abspath(self.config['browser']['user_data_dir'])}")
-            
-            # Initialize Chrome driver
-            self.driver = webdriver.Chrome(
-                service=Service(ChromeDriverManager().install()),
-                options=chrome_options
-            )
+    def wait_for_manual_auth(self):
+        """Wait for manual wallet authentication."""
+        try:
+            logger.info("Please complete the following steps:")
+            logger.info("1. Log in to Photon DEX manually")
+            logger.info("2. Connect your Phantom wallet")
+            logger.info("3. Complete any security verifications")
+            logger.info("4. Once authenticated, the bot will continue automatically")
             
             # Navigate to Photon DEX
-            self.driver.get("https://photon-sol.tinyastro.io/en/settings?tab_id=1")
+            self.driver.get("https://photon-sol.tinyastro.io/en/discover")
             
-            # Wait for page to load
-            WebDriverWait(self.driver, self.config['automation']['element_timeout']).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "connect-wallet-btn"))
-            )
+            input("Press Enter once you have completed the authentication steps...")
             
-            # Connect wallet if needed
-            if self.config['wallet']['auto_connect']:
-                await self._connect_wallet()
+            # Verify connection
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.CLASS_NAME, "token-table"))
+                )
+                logger.info("Successfully verified authentication")
+                return True
+            except TimeoutException:
+                logger.error("Could not verify authentication. Please check your connection")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error during manual authentication: {str(e)}")
+            return False
+            
+    async def initialize(self, manual_auth: bool = True):
+        """Initialize the trading bot by attaching to existing browser."""
+        try:
+            if self.initialized:
+                return True
+                
+            # Set up browser connection
+            if not self.setup_browser():
+                return False
+                
+            # Check authentication
+            if not self.check_authentication():
+                if manual_auth:
+                    if not self.wait_for_manual_auth():
+                        await self.cleanup()
+                        return False
+                else:
+                    logger.error("Please log in to Photon DEX and connect wallet in the browser first")
+                    return False
+                
+            # Initialize token discovery
+            self.discovery = TokenDiscovery(self.driver, self.config)
             
             self.initialized = True
             logger.info("Photon trader initialized successfully")
+            return True
             
         except Exception as e:
             logger.error(f"Failed to initialize Photon trader: {str(e)}")
             await self.cleanup()
-            raise
+            return False
             
-    async def _connect_wallet(self):
-        """Connect to Phantom wallet with retry logic."""
-        while self.retry_count < self.max_retries and not self.wallet_connected:
-            try:
-                # Check if wallet is already connected
-                try:
-                    wallet_btn = self.driver.find_element(By.CLASS_NAME, "connect-wallet-btn")
-                except NoSuchElementException:
-                    logger.info("Wallet already connected")
-                    self.wallet_connected = True
-                    return
+    async def scan_for_opportunities(self) -> List[Tuple[TokenMetrics, float, str]]:
+        """Scan for trading opportunities."""
+        try:
+            # Scan tokens
+            tokens = await self.discovery.scan_tokens()
+            opportunities = []
+            
+            # Analyze each token
+            for token in tokens:
+                score, reason = self.discovery.analyze_opportunity(token)
+                if score > 0:
+                    opportunities.append((token, score, reason))
                     
-                # Click connect wallet button
-                wallet_btn.click()
-                
-                # Wait for Phantom popup
-                time.sleep(self.config['automation']['wait_time'])
-                
-                # Use pyautogui to handle Phantom popup
-                connect_pos = pyautogui.locateOnScreen(
-                    os.path.join(self.config['automation']['screenshot_dir'], 'connect_button.png')
-                )
-                if connect_pos:
-                    pyautogui.click(connect_pos)
-                    self.wallet_connected = True
-                    logger.info("Wallet connected successfully")
-                    return
-                    
-                self.retry_count += 1
-                if self.retry_count < self.max_retries:
-                    logger.warning(f"Wallet connection failed, retrying ({self.retry_count}/{self.max_retries})")
-                    time.sleep(self.config['wallet']['reconnect_interval'])
-                    
-            except Exception as e:
-                logger.error(f"Failed to connect wallet: {str(e)}")
-                self.retry_count += 1
-                if self.retry_count < self.max_retries:
-                    time.sleep(self.config['wallet']['reconnect_interval'])
-                else:
-                    raise
-                    
+            # Sort by score descending
+            opportunities.sort(key=lambda x: x[1], reverse=True)
+            
+            logger.info(f"Found {len(opportunities)} potential trading opportunities")
+            return opportunities[:self.config['discovery']['max_opportunities']]
+            
+        except Exception as e:
+            logger.error(f"Failed to scan for opportunities: {str(e)}")
+            return []
+            
     async def place_buy_order(self, token_address: str, amount_sol: float):
         """Place a buy order for a token with risk management."""
         try:
-            if not self.initialized or not self.wallet_connected:
-                raise Exception("Trader not initialized or wallet not connected")
+            if not self.initialized:
+                raise Exception("Trader not initialized")
                 
             # Check risk limits
             if amount_sol > self.config['risk']['max_trade_size']:
@@ -190,8 +236,8 @@ class PhotonTrader:
     async def place_sell_order(self, token_address: str, amount_tokens: float):
         """Place a sell order for a token with risk management."""
         try:
-            if not self.initialized or not self.wallet_connected:
-                raise Exception("Trader not initialized or wallet not connected")
+            if not self.initialized:
+                raise Exception("Trader not initialized")
                 
             # Navigate to swap page
             self.driver.get(f"https://photon-sol.tinyastro.io/en/swap")
@@ -247,8 +293,8 @@ class PhotonTrader:
     async def get_token_price(self, token_address: str) -> float:
         """Get current token price in SOL."""
         try:
-            if not self.initialized or not self.wallet_connected:
-                raise Exception("Trader not initialized or wallet not connected")
+            if not self.initialized:
+                raise Exception("Trader not initialized")
                 
             # Navigate to swap page
             self.driver.get(f"https://photon-sol.tinyastro.io/en/swap")
@@ -284,7 +330,11 @@ class PhotonTrader:
     async def cleanup(self):
         """Clean up resources."""
         if self.driver:
-            self.driver.quit()
-        self.initialized = False
-        self.wallet_connected = False
-        self.retry_count = 0
+            try:
+                self.driver.quit()
+            except Exception as e:
+                logger.error(f"Error closing webdriver: {str(e)}")
+            finally:
+                self.driver = None
+                self.initialized = False
+                self.wallet_connected = False

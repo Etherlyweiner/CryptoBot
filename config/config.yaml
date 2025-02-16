@@ -4,10 +4,6 @@
 wallet:
   primary_address: "4c4nUoSeQyyp5PhAzxPudKCtKwkrEvTqY8AZVrhqJUGG"  # Primary wallet
   secondary_address: "7YTZcHQGJuReSDrQVvPCAj8qyxPzaUexHdKcswrumoyc"  # Secondary wallet
-  auto_approve_transactions: false
-  connection_timeout_ms: 30000
-  auto_connect: true
-  reconnect_interval: 60  # Seconds to wait before reconnecting
   max_retries: 3  # Maximum number of connection retries
   network: "mainnet-beta"  # Solana network
 
@@ -19,75 +15,32 @@ network:
     maxRetries: 3
     retryDelay: 1000
     timeout: 30000
-  rpc_url: "https://rpc.helius.xyz/?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c"  # Helius API key
-  ws_url: "wss://rpc.helius.xyz/?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c"  # Helius API key
   cluster: "mainnet-beta"  # Using mainnet for production
   commitment: "confirmed"
-
-# Trading settings
-trading:
-  max_concurrent_trades: 3  # Maximum number of concurrent trades
-  max_slippage: 1.0  # Maximum allowed slippage in percentage
-  min_liquidity: 1000  # Minimum liquidity in SOL
-  gas_adjustment: 1.2  # Gas price adjustment factor
-  max_position_size: 1.0  # Maximum position size in SOL
-  stop_loss: 2.0  # Stop loss percentage
-  take_profit: 5.0  # Take profit percentage
 
 # Risk management
 risk:
   max_daily_loss: 5.0  # Maximum daily loss percentage
   max_trade_size: 0.5  # Maximum trade size in SOL
   min_liquidity_sol: 100  # Minimum liquidity required in SOL
-  max_position_size_sol: 1.0
-  max_daily_trades: 20
-  max_open_positions: 5
-  min_liquidity_usd: 100000
+  max_position_size_sol: 1.0  # Maximum position size in SOL
+  max_daily_trades: 20  # Maximum trades per day
+  max_open_positions: 5  # Maximum concurrent positions
+  min_liquidity_usd: 100000  # Minimum USD liquidity
   blacklisted_tokens: []  # List of token addresses to avoid
 
 # Token discovery
 discovery:
-  min_market_cap_usd: 1000000
-  min_daily_volume_usd: 100000
-  max_price_impact_percent: 2.0
-  blacklisted_tokens: []
-
-# APIs and services
-apis:
-  birdeye:
-    base_url: "https://public-api.birdeye.so"
-  jupiter:
-    base_url: "https://quote-api.jup.ag/v6"
-  helius:
-    base_url: "https://api.helius.xyz/v0"
-
-# Monitoring
-monitoring:
-  interval_seconds: 60
-  log_level: "INFO"
-  metrics_port: 9090
-  enable_prometheus: true
-
-# Security
-security:
-  max_wallet_exposure_percent: 20.0
-  require_wallet_sign: true
-  enable_auto_updates: false
-
-# UI automation
-automation:
-  screenshot_dir: "screenshots"  # Directory for UI element screenshots
-  wait_time: 2  # Default wait time in seconds
-  retry_attempts: 3  # Number of retry attempts
-  element_timeout: 10  # Maximum time to wait for elements
-  confirm_timeout: 30  # Maximum time to wait for transaction confirmations
+  min_liquidity: 100  # Minimum liquidity in SOL
+  min_holders: 100  # Minimum number of holders
+  min_volume: 50  # Minimum 24h volume in SOL
+  max_opportunities: 10  # Maximum number of opportunities to return
+  scan_interval: 300  # Seconds between scans
+  min_opportunity_score: 3.0  # Minimum score for valid opportunities
 
 # Browser settings
 browser:
-  headless: false  # Run browser in headless mode
-  user_data_dir: "browser_data"  # Directory for browser profile
-  window_size: [1920, 1080]  # Browser window size
-
-# Example tokens for testing
-tokens:
-  example_token: "YOUR_TOKEN_ADDRESS"  # Replace with actual token address
+  headless: false  # Run in headless mode
+  user_data_dir: "C:/Users/Jonat/CryptoBot/browser_data"  # Browser profile directory
+  connection_retries: 3  # Number of connection retries
+  element_timeout: 30  # Seconds to wait for elements
