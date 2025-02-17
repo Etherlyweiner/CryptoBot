@@ -21,6 +21,7 @@ wheels/
 *.egg
 
 # Virtual Environment
+.venv
 venv/
 env/
 ENV/
@@ -96,3 +97,6 @@ yarn-error.log*
 
 # Utility scripts
 setup_node_path.bat
+
+# Browser data
+browser_data/

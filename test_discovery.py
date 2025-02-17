@@ -1,88 +1,69 @@
-"""Test script for token discovery using existing browser session."""
-
+import os
+import sys
 import asyncio
 import yaml
 import logging
 import psutil
-from bot.token_discovery import TokenMetrics
 from bot.photon_trader import PhotonTrader
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def check_browser_ready():
     """Check if Edge is running with remote debugging."""
     for proc in psutil.process_iter(['name', 'cmdline']):
         try:
             if proc.info['name'] == 'msedge.exe':
-                cmdline = proc.info.get('cmdline', [])
-                if any('--remote-debugging-port=9222' in arg for arg in cmdline):
+                cmdline = proc.info['cmdline']
+                if cmdline and '--remote-debugging-port=9222' in ' '.join(cmdline):
                     return True
         except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
+            continue
     return False
 
 async def main():
-    """Test token discovery using existing browser session."""
-    trader = None
     try:
         # Check if browser is ready
         if not check_browser_ready():
-            print("\nPlease start Edge with remote debugging first:")
-            print("Run: python start_browser.py")
+            logger.error("Edge browser not running with remote debugging")
+            logger.info("Please start the browser first:")
+            logger.info("Run: python start_browser.py")
             return
             
-        # Load config
-        with open('config/config.yaml', 'r') as f:
+        logger.info("Loading configuration...")
+        with open("config/config.yaml", "r") as f:
             config = yaml.safe_load(f)
             
-        print("\nConnecting to existing browser session...")
-        
-        # Initialize trader
+        logger.info("Creating trader instance...")
         trader = PhotonTrader(config)
-        if not await trader.initialize(manual_auth=False):
-            print("\nFailed to initialize trader. Please ensure you're logged in to Photon DEX")
+        
+        logger.info("Connecting to existing browser session...")
+        if not await trader.initialize(manual_auth=True):
+            logger.error("Failed to initialize trader. Please ensure you're logged in to Photon DEX")
+            await trader.cleanup()
             return
             
-        print("\nStarting token discovery...")
-        
-        # Scan for opportunities
+        logger.info("Starting opportunity scan...")
         opportunities = await trader.scan_for_opportunities()
         
-        if not opportunities:
-            print("\nNo trading opportunities found")
-            return
+        if opportunities:
+            logger.info(f"Found {len(opportunities)} opportunities:")
+            for token, score, reason in opportunities:
+                logger.info(f"Token: {token.symbol}")
+                logger.info(f"Score: {score}")
+                logger.info(f"Reason: {reason}")
+                logger.info("-" * 50)
+        else:
+            logger.info("No opportunities found at this time")
             
-        # Print results
-        print("\nFound Trading Opportunities:")
-        print("-" * 80)
+        await trader.cleanup()
+        logger.info("Bot resources cleaned up")
         
-        for token, score, reason in opportunities:
-            print(f"\nToken: {token.symbol} ({token.name})")
-            print(f"Address: {token.address}")
-            print(f"Price: ${token.price:.4f}")
-            print(f"24h Change: {token.price_change_24h:.1f}%")
-            print(f"Volume: ${token.volume_24h:,.0f}")
-            print(f"Liquidity: ${token.liquidity:,.0f}")
-            print(f"Score: {score:.2f}")
-            print(f"Reason: {reason}")
-            print("-" * 40)
-            
-    except KeyboardInterrupt:
-        print("\nBot stopped by user")
     except Exception as e:
-        logging.error(f"Test failed: {str(e)}")
-        print(f"\nError: {str(e)}")
-    finally:
-        if trader:
+        logger.error(f"Error in main: {str(e)}")
+        if 'trader' in locals():
             await trader.cleanup()
-            print("\nBot resources cleaned up")
             
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nBot stopped by user")
+    asyncio.run(main())

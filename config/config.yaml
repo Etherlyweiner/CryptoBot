@@ -2,9 +2,11 @@
 
 # Wallet settings
 wallet:
-  primary_address: "4c4nUoSeQyyp5PhAzxPudKCtKwkrEvTqY8AZVrhqJUGG"  # Primary wallet
-  secondary_address: "7YTZcHQGJuReSDrQVvPCAj8qyxPzaUexHdKcswrumoyc"  # Secondary wallet
-  max_retries: 3  # Maximum number of connection retries
+  primary_address: "4c4nUoSeQyyp5PhAzxPudKCtKwkrEvTqY8AZVrhqJUGG"  # Your primary wallet address
+  secondary_address: "7YTZcHQGJuReSDrQVvPCAj8qyxPzaUexHdKcswrumoyc"  # Backup wallet (optional)
+  max_retries: 3
+  min_balance: 0.1  # Minimum SOL balance to maintain
+  max_allocation: 0.5  # Maximum allocation per trade as fraction of balance
   network: "mainnet-beta"  # Solana network
 
 # Network settings
@@ -18,16 +20,48 @@ network:
   cluster: "mainnet-beta"  # Using mainnet for production
   commitment: "confirmed"
 
+# RPC settings
+rpc:
+  primary: "https://mainnet.helius-rpc.com/?api-key=74d34f4f-e88d-4da1-8178-01ef5749372c"
+  fallbacks:
+    - "https://api.mainnet-beta.solana.com"
+    - "https://solana-api.projectserum.com"
+    - "https://rpc.ankr.com/solana"
+  retries: 3
+  timeout: 30
+  priority_fee_enabled: true
+  compute_units: 1000000  # Maximum compute units for transactions
+  helius:
+    enabled: true
+    api_key: "74d34f4f-e88d-4da1-8178-01ef5749372c"
+    enhanced_logs: true
+    webhooks:
+      enabled: false
+      url: ""
+
 # Risk management
 risk:
+  min_liquidity: 1000  # Minimum liquidity in USD
+  min_volume: 500  # Minimum 24h volume in USD
+  max_slippage: 0.03  # Maximum allowed slippage
+  stop_loss: 0.15  # Stop loss percentage
+  take_profit: 0.5  # Take profit percentage
   max_daily_loss: 5.0  # Maximum daily loss percentage
   max_trade_size: 0.5  # Maximum trade size in SOL
-  min_liquidity_sol: 100  # Minimum liquidity required in SOL
   max_position_size_sol: 1.0  # Maximum position size in SOL
   max_daily_trades: 20  # Maximum trades per day
   max_open_positions: 5  # Maximum concurrent positions
   min_liquidity_usd: 100000  # Minimum USD liquidity
   blacklisted_tokens: []  # List of token addresses to avoid
+
+# MEV settings
+mev:
+  base_priority_fee: 10000  # Base priority fee in lamports
+  max_priority_fee: 100000  # Maximum priority fee in lamports
+  backrun_enabled: true  # Enable backrunning large trades
+  sandwich_enabled: false  # Disable sandwich trading for safety
+  min_profit_threshold: 0.02  # Minimum profit threshold for MEV
+  max_blocks_to_wait: 3  # Maximum blocks to wait for transaction
 
 # Token discovery
 discovery:
@@ -35,12 +69,56 @@ discovery:
   min_holders: 100  # Minimum number of holders
   min_volume: 50  # Minimum 24h volume in SOL
   max_opportunities: 10  # Maximum number of opportunities to return
-  scan_interval: 300  # Seconds between scans
-  min_opportunity_score: 3.0  # Minimum score for valid opportunities
+  scan_interval: 30  # Seconds between scans
+  min_score: 3.0  # Minimum opportunity score
+  max_concurrent_trades: 2
+  meme_multiplier: 2.0  # Score multiplier for meme tokens
+  migration_multiplier: 1.5  # Score multiplier for migration signals
+  
+  # Token type weights
+  weights:
+    liquidity_ratio: 0.3
+    volume_ratio: 0.3
+    holder_count: 0.2
+    price_change: 0.2
+
+  # Meme token indicators
+  meme_keywords:
+    - pepe
+    - doge
+    - shib
+    - inu
+    - elon
+    - moon
+    - safe
+    - baby
+    - chad
+    - wojak
+    - based
+    - meme
+    - cat
+    - dog
+    - frog
+    - coin
+
+  # Migration indicators
+  migration_keywords:
+    - v2
+    - migration
+    - upgrade
+    - relaunch
+    - airdrop
+    - snapshot
+    - bridge
+    - transfer
+    - lock
+    - vesting
 
 # Browser settings
 browser:
   headless: false  # Run in headless mode
+  debug_port: 9222
+  timeout: 30
   user_data_dir: "C:/Users/Jonat/CryptoBot/browser_data"  # Browser profile directory
   connection_retries: 3  # Number of connection retries
   element_timeout: 30  # Seconds to wait for elements
