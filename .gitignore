@@ -98,5 +98,8 @@ yarn-error.log*
 # Utility scripts
 setup_node_path.bat
 
-# Browser data
+# Browser data and sessions
+chrome_data/
 browser_data/
+*.session
+*.session-journal
