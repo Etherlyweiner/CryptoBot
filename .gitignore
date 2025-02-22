@@ -99,7 +99,12 @@ yarn-error.log*
 setup_node_path.bat
 
 # Browser data and sessions
-chrome_data/
 browser_data/
+chrome_data/
 *.session
 *.session-journal
+sessions/
+session-store-*
+
+# Cleanup scripts
+cleanup.ps1
